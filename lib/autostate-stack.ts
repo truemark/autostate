@@ -1,16 +1,12 @@
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
-// import * as sqs from 'aws-cdk-lib/aws-sqs';
+import {AutoState} from "./autostate-construct"
 
-export class AutostateStack extends cdk.Stack {
+export class AutoStateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // The code that defines your stack goes here
+    new AutoState(this, "AutoState", {});
 
-    // example resource
-    // const queue = new sqs.Queue(this, 'AutostateQueue', {
-    //   visibilityTimeout: cdk.Duration.seconds(300)
-    // });
   }
 }

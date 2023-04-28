@@ -23,5 +23,12 @@
     "aws-cdk-lib": "2.76.0",
     "constructs": "^10.0.0",
     "source-map-support": "^0.5.21"
-  }
+  },
+  "engines": {
+    "pnpm": "^8.0.0",
+    "node": ">=18",
+    "yarn": "forbidden, use pnpm",
+    "npm": "forbidden, use pnpm"
+  },
+  "packageManager": "pnpm@8.3.1"
 }
