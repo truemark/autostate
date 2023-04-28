@@ -10,16 +10,17 @@ This AWS CDK project deploys resources to automatically start, stop, reboot and 
 
 ## Supported Tags
 
-| Tag                                 | Description                                                                                                          |
-|-------------------------------------|----------------------------------------------------------------------------------------------------------------------|
-| autostate:timezone                  | The timezone to use when interpreting schedules. Defaults to UTC. Example: America/Denver                            |
-| autostate:start-schedule            | The schedule as a cron expression to start the resource. Example: 0 8 * * 1-5                                        |
-| autostate:stop-schedule             | The schedule as a cron expression to stop the resource. Example: 0 18 * * 1-5                                        |
-| autostate:reboot-schedule           | The schedule as a cron expression to reboot the instance. Example: 0 12 * * 1-5                                      |
-| autostate:max-runtime               | The number of minutes the resource may run before being stopped.                                                     |
-| autostate:max-lifetime              | The number of minutes the resource may exist before being terminated.                                                |
-| autostate:skip-final-snapshot       | Applies to RDS. If set to true, the resource will be terminated without taking a final snapshot. Default is false.   |
-| autostate:final-snapshot-identifier | Applies to RDS. Used if skip-final-snapshot is set to false. Default "autostatefinal"                                |                                                                                                                 
+| Tag                                 | Description                                                                                                        |
+|-------------------------------------|--------------------------------------------------------------------------------------------------------------------|
+| autostate:timezone                  | The timezone to use when interpreting schedules. Defaults to UTC. Example: America/Denver                          |
+| autostate:start-schedule            | The schedule as a cron expression to start the resource. Example: 0 8 * * 1-5                                      |
+| autostate:stop-schedule             | The schedule as a cron expression to stop the resource. Example: 0 18 * * 1-5                                      |
+| autostate:reboot-schedule           | The schedule as a cron expression to reboot the instance. Example: 0 12 * * 1-5                                    |
+| autostate:max-runtime               | The number of minutes the resource may run before being stopped.                                                   |
+| autostate:max-lifetime              | The number of minutes the resource may exist before being terminated.                                              |
+| autostate:skip-final-snapshot       | Applies to RDS. If set to true, the resource will be terminated without taking a final snapshot. Default is false. |
+| autostate:final-snapshot-identifier | Applies to RDS. Used if skip-final-snapshot is set to false. Default "autostatefinal"                              |
+| autostate:desired-count             | Applies to ECS. The number of tasks to run for the service when starting. Default 1.                               |
 
 
 Con Expressions
