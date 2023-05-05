@@ -8,7 +8,8 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "postinstall": "cd handlers && pnpm i --frozen-lockfile"
   },
   "devDependencies": {
     "@types/jest": "^29.4.0",
