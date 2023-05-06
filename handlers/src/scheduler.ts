@@ -225,7 +225,7 @@ async function describeEc2Instances(instanceIds: string[]): Promise<AutoStateRes
         state,
         tags: instance.Tags?.reduce((tags, tag) => {
           if (tag.Key === "autostate:stop-schedule"
-            || tag.Key === "autostate.start-schedule"
+            || tag.Key === "autostate:start-schedule"
             || tag.Key === "autostate:reboot-schedule"
             || tag.Key === "autostate:max-runtime"
             || tag.Key === "autostate:max-lifetime"
