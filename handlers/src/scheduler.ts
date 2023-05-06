@@ -123,16 +123,14 @@ function cronActions(resource: AutoStateResource): AutoStateAction[] {
   if (start) {
     actions.push(start);
   }
-  if (resource.state !== "stopped") {
-    const stop = cronAction(resource, "stop", resource.tags.stopSchedule);
-    if (stop) {
-      actions.push(stop);
-    }
-    if (resource.type !== "ecs-service") { // ECS services don't support reboot
-      const reboot = cronAction(resource, "reboot", resource.tags.rebootSchedule);
-      if (reboot) {
-        actions.push(reboot);
-      }
+  const stop = cronAction(resource, "stop", resource.tags.stopSchedule);
+  if (stop) {
+    actions.push(stop);
+  }
+  if (resource.type !== "ecs-service") { // ECS services don't support reboot
+    const reboot = cronAction(resource, "reboot", resource.tags.rebootSchedule);
+    if (reboot) {
+      actions.push(reboot);
     }
   }
   return actions;
@@ -140,7 +138,9 @@ function cronActions(resource: AutoStateResource): AutoStateAction[] {
 
 function nextAction(resource: AutoStateResource, priorAction?: AutoStateAction): AutoStateAction | undefined {
   let selected = undefined;
-  for (const action of [...cronActions(resource), ...durationActions(resource, priorAction)]) {
+  const actions = [...cronActions(resource), ...durationActions(resource, priorAction)];
+  console.log("Evaluation " + actions.length + "possible actions for resource " + resource.id);
+  for (const action of actions) {
     if (selected === undefined || action.when < selected.when) {
       selected = action;
     }
@@ -509,7 +509,12 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
     for (const resource of resources) {
       console.log("Scheduling EC2 instance " + resource.id);
       const action = nextAction(resource);
-      await startExecution(stateMachineArn, action);
+      if (action) {
+        console.log("Next action is " + action.action + " on resource" + resource.id + " at " + action.when);
+        await startExecution(stateMachineArn, action);
+      } else {
+        console.log("No action scheduled for resource " + resource.id);
+      }
     }
   } else if ((event["detail-type"] === "Tag Change on Resource" && event.detail.service === "rds")
     || event["detail-type"] === "RDS DB Instance Event" || event["detail-type"] === "RDS DB Cluster Event") {
@@ -522,7 +527,12 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
         : await describeRdsClusters(resourceId.replace("cluster:", ""));
       for (const resource of resources) {
         const action = nextAction(resource);
-        await startExecution(stateMachineArn, action);
+        if (action) {
+          console.log("Next action is " + action.action + " on resource" + resource.id + " at " + action.when);
+          await startExecution(stateMachineArn, action);
+        } else {
+          console.log("No action scheduled for resource " + resource.id);
+        }
       }
     }
   } else if ((event["detail-type"] === "Tag Change on Resource" && event.detail.service === "ecs")
@@ -534,10 +544,13 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
       console.log("Scheduling ECS resource " + resourceArn);
       const resources = await describeEcsService(resourceArn);
       for (const resource of resources) {
-        console.log("Resource", JSON.stringify(resource, null, 2));
         const action = nextAction(resource);
-        console.log("Action", JSON.stringify(action, null, 2));
-        await startExecution(stateMachineArn, action, true);
+        if (action) {
+          console.log("Next action is " + action.action + " on resource" + resource.id + " at " + action.when);
+          await startExecution(stateMachineArn, action, true);
+        } else {
+          console.log("No action scheduled for resource " + resource.id);
+        }
       }
     }
   }
