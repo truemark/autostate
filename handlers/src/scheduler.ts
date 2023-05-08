@@ -142,15 +142,20 @@ function cronAction(resource: AutoStateResource, action: Action, cronExpression:
 
 function cronActions(resource: AutoStateResource): AutoStateAction[] {
   const actions: AutoStateAction[] = [];
-  const start = cronAction(resource, "start", resource.tags.startSchedule);
-  if (start) {
-    actions.push(start);
+  if (resource.tags.startSchedule) {
+    const start = cronAction(resource, "start", resource.tags.startSchedule);
+    if (start) {
+      actions.push(start);
+    }
   }
-  const stop = cronAction(resource, "stop", resource.tags.stopSchedule);
-  if (stop) {
-    actions.push(stop);
+  if (resource.tags.stopSchedule) {
+    const stop = cronAction(resource, "stop", resource.tags.stopSchedule);
+    if (stop) {
+      actions.push(stop);
+    }
   }
-  if (resource.type !== "ecs-service") { // ECS services don't support reboot
+  // ECS services don't support reboot
+  if (resource.type !== "ecs-service" && resource.tags.rebootSchedule) {
     const reboot = cronAction(resource, "reboot", resource.tags.rebootSchedule);
     if (reboot) {
       actions.push(reboot);
@@ -195,13 +200,14 @@ function durationAction(resource: AutoStateResource, action: Action, duration?: 
 
 function durationActions(resource: AutoStateResource, priorAction: AutoStateAction): AutoStateAction[] {
   const actions: AutoStateAction[] = [];
-  if (resource.state !== "stopped" && (!priorAction || priorAction.action !== "stop")) {
+  if (resource.state !== "stopped" && (!priorAction || priorAction.action !== "stop") && resource.tags.maxRuntime) {
     const maxRuntime = durationAction(resource, "stop", resource.tags.maxRuntime);
     if (maxRuntime) {
       actions.push(maxRuntime);
     }
   }
-  if (resource.type !== "ecs-service") { // ECS services don't support termination
+  // ECS services don't support termination
+  if (resource.type !== "ecs-service" && resource.tags.maxLifetime) {
     const maxLifetime = durationAction(resource, "terminate", resource.tags.maxLifetime);
     if (maxLifetime) {
       actions.push(maxLifetime);
