@@ -23,30 +23,48 @@ This AWS CDK project deploys resources to automatically start, stop, reboot and 
 | autostate:desired-count             | Applies to ECS. The number of tasks to run for the service when starting. Default 1.                               |
 
 
-Con Expressions
+### Con Expressions
 ```
-*    *    *    *    *    *
-┬    ┬    ┬    ┬    ┬    ┬
-│    │    │    │    │    |
-│    │    │    │    │    └ day of week (0 - 7, 1L - 7L) (0 or 7 is Sun)
-│    │    │    │    └───── month (1 - 12)
-│    │    │    └────────── day of month (1 - 31, L)
-│    │    └─────────────── hour (0 - 23)
-│    └──────────────────── minute (0 - 59)
-└───────────────────────── second (0 - 59, optional)
+ *    *    *    *    *
+ ┬    ┬    ┬    ┬    ┬
+ │    │    │    │    |
+ │    │    │    │    └ day of week (0 - 7, 1L - 7L) (0 or 7 is Sun)
+ │    │    │    └───── month (1 - 12)
+ │    │    └────────── day of month (1 - 31, L)
+ │    └─────────────── hour (0 - 23)
+ └──────────────────── minute (0 - 59)
 ```
+
+### Cron Examples
+
+* `0 8 * * 1-5` - 8am on weekdays
+* `0 18 * * 0,6` - 6pm on weekends
+* `0 12 * * *` - 12pm every day
+
+### Tag Examples
+
+Start an instance every 15 minutes and shut it down 5 minutes after.
+```json
+{
+  "autostate:start-schedule": "0,15,30,45 * * * *", 
+  "autostate:stop-schedule": "5,20,35,50 * * * *"
+}
+```
+
+Start an instance every 30 minutes and shut it down 10 minutes after it starts on weekdays.
+```json
+{
+  "autostate:start-schedule": "0,30 * * * 1-5", 
+  "autostate:max-runtime": "10"
+}
+```
+
 
 ## Caveats
 
  * RDS doesn't allow asterisks in tag values so use hyphens instead when defining cron expressions
  * terminate-schedule and reboot-schedule tags are ignored for ECS services
  * RDS doesn't allow termination of RDS clusters when they are stopped
-
-Examples:
-
- * `0 8 * * 1-5` - 8am on weekdays
- * `0 18 * * 0,6` - 6pm on weekends
- * `0 12 * * *` - 12pm every day
 
 ## References
 

@@ -6,14 +6,21 @@
     ],
     "exclude": [
       "README.md",
+      "LICENSE.txt",
       "cdk*.json",
       "**/*.d.ts",
       "**/*.js",
+      "**/*.test.ts",
       "tsconfig.json",
       "package*.json",
       "yarn.lock",
+      "pnpm-lock.yaml",
       "node_modules",
-      "test"
+      "test",
+      ".gitignore",
+      ".editorconfig",
+      ".npmignore",
+      "notes.txt"
     ]
   },
   "context": {

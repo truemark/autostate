@@ -1,7 +1,7 @@
 import * as arnparser from "@aws-sdk/util-arn-parser"
 import * as cron from "cron-parser";
 import {CronExpression} from "cron-parser/types"
-import {DescribeInstancesCommand, EC2Client, Instance} from '@aws-sdk/client-ec2'
+import {DescribeInstancesCommand, EC2Client, Instance, Tag} from '@aws-sdk/client-ec2'
 import {SFNClient, StartExecutionCommand} from "@aws-sdk/client-sfn"
 import {DateTime} from "luxon"
 import {
@@ -55,8 +55,8 @@ export function cyrb53(str: string, seed: number = 0): number {
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-function hashTags(tags: AutoStateTags): number {
-  return cyrb53(`${tags.timezone ?? ""}|${tags.startSchedule ?? ""}|` +
+function hashTags(tags: AutoStateTags): string {
+  return "V1" + cyrb53(`${tags.timezone ?? ""}|${tags.startSchedule ?? ""}|` +
     `${tags.stopSchedule ?? ""}|${tags.rebootSchedule ?? ""}|` +
     `${tags.maxRuntime ?? ""}|${tags.maxLifetime ?? ""}`);
 }
@@ -65,6 +65,7 @@ interface AutoStateResource {
   readonly type: ResourceType;
   readonly id: string,
   readonly tags: AutoStateTags,
+  readonly tagsHash: string,
   readonly startTime: string,
   readonly createTime: string,
   readonly state: State
@@ -84,17 +85,23 @@ interface AutoStateRdsClusterResource extends AutoStateResource {
 }
 
 interface AutoStateAction {
-  readonly resource: AutoStateResource;
+  readonly resourceType: ResourceType;
+  readonly resourceId: string;
+  readonly tagHash: string;
   readonly when: string;
   readonly action: Action;
-  readonly execute?: boolean;
-  readonly reason?: string;
 }
 
-function getActionName(action: AutoStateAction, hashId?: boolean): string {
-  const id = hashId ? cyrb53(action.resource.id) : action.resource.id;
-  return `${action.resource.type}-${id}-${action.action}-` +
-    `${DateTime.fromISO(action.when).toFormat("yyyy-MM-dd-HH-mm")}-${hashTags(action.resource.tags)}`;
+interface AutoStateActionResult extends AutoStateAction {
+  readonly execute: boolean;
+  readonly reason: string;
+  readonly resource?: AutoStateResource;
+}
+
+function getActionName(action: AutoStateAction, tags: AutoStateTags, hashId?: boolean): string {
+  const id = hashId ? cyrb53(action.resourceId) : action.resourceId;
+  return `${action.resourceType}-${id}-${action.action}-` +
+    `${DateTime.fromISO(action.when).toFormat("yyyy-MM-dd-HH-mm")}-${hashTags(tags)}`;
 }
 
 function optionalNumber(value: string | undefined): number | undefined {
@@ -102,17 +109,29 @@ function optionalNumber(value: string | undefined): number | undefined {
 }
 
 function optionalCron(value: string | undefined, tz: string): CronExpression | undefined {
-  return value ? cron.parseExpression(value.replaceAll("-", "*"), {tz}) : undefined;
+  if (value) {
+    const parts = value.split(/\s+/);
+    if (parts.length !== 5) {
+      throw new Error(`Invalid cron expression: ${value}. Expecting 5 fields and received ${parts.length}}`);
+    }
+    return cron.parseExpression(value.replaceAll("-", "*"), {
+      tz,
+      currentDate: new Date(Date.now() + 60000), // look 1 minute in the future to be safe
+    })
+  }
+  return undefined;
 }
 
 function cronAction(resource: AutoStateResource, action: Action, cronExpression: string): AutoStateAction | undefined {
   const tz = resource.tags.timezone ?? "UTC";
-  const cron = optionalCron(cronExpression, tz);
-  if (cron && cron.hasNext()) {
+  const expression = optionalCron(cronExpression, tz);
+  if (expression && expression.hasNext()) {
     return {
-      resource,
-      when: cron.next().toISOString(),
+      resourceType: resource.type,
+      resourceId: resource.id,
+      when: expression.next().toISOString(),
       action,
+      tagHash: hashTags(resource.tags),
     };
   }
 }
@@ -139,7 +158,7 @@ function cronActions(resource: AutoStateResource): AutoStateAction[] {
 function nextAction(resource: AutoStateResource, priorAction?: AutoStateAction): AutoStateAction | undefined {
   let selected = undefined;
   const actions = [...cronActions(resource), ...durationActions(resource, priorAction)];
-  console.log("Evaluation " + actions.length + "possible actions for resource " + resource.id);
+  console.log(`Evaluating ${actions.length} possible future actions for ${resource.type} ${resource.id}`);
   for (const action of actions) {
     if (selected === undefined || action.when < selected.when) {
       selected = action;
@@ -160,9 +179,11 @@ function durationAction(resource: AutoStateResource, action: Action, duration?: 
   if (minutes) {
     const when = calculateWhen(action === "stop" && resource.state === "running" ? resource.startTime : resource.createTime, minutes);
     return {
-      resource,
+      resourceType: resource.type,
+      resourceId: resource.id,
       when: when.toISOString(),
-      action
+      action,
+      tagHash: hashTags(resource.tags)
     };
   }
   return undefined;
@@ -202,6 +223,20 @@ function getEc2CreateTime(instance: Instance): Date {
   return date ? date : instance.LaunchTime;
 }
 
+function getEc2Tags(tags?: Tag[]): AutoStateTags {
+  return tags?.reduce((tags, tag) => {
+    if (tag.Key === "autostate:stop-schedule"
+        || tag.Key === "autostate:start-schedule"
+        || tag.Key === "autostate:reboot-schedule"
+        || tag.Key === "autostate:max-runtime"
+        || tag.Key === "autostate:max-lifetime"
+        || tag.Key === "autostate:timezone") {
+      tags[toCamelCase(tag.Key.replace("autostate:", ""))] = tag.Value.trim();
+    }
+    return tags;
+  }, {} as AutoStateTags) ?? {}
+}
+
 async function describeEc2Instances(instanceIds: string[]): Promise<AutoStateResource[]> {
   const resources: AutoStateResource[] = [];
   const output = await ec2Client.send(new DescribeInstancesCommand({
@@ -217,23 +252,16 @@ async function describeEc2Instances(instanceIds: string[]): Promise<AutoStateRes
       } else if (instance.State?.Name === "terminated") {
         state = "terminated";
       }
+      const tags = getEc2Tags(instance.Tags);
+      const tagsHash = hashTags(tags);
       resources.push({
         type: "ec2-instance",
         id: instance.InstanceId,
         createTime: getEc2CreateTime(instance).toISOString(),
         startTime: instance.LaunchTime.toISOString(),
         state,
-        tags: instance.Tags?.reduce((tags, tag) => {
-          if (tag.Key === "autostate:stop-schedule"
-            || tag.Key === "autostate:start-schedule"
-            || tag.Key === "autostate:reboot-schedule"
-            || tag.Key === "autostate:max-runtime"
-            || tag.Key === "autostate:max-lifetime"
-            || tag.Key === "autostate:timezone") {
-            tags[toCamelCase(tag.Key.replace("autostate:", ""))] = tag.Value.trim();
-          }
-          return tags;
-        }, {} as AutoStateTags) ?? {}
+        tags,
+        tagsHash
       });
     }
   }
@@ -301,13 +329,16 @@ async function describeRdsInstances(instanceId: string): Promise<AutoStateResour
       } else if (instance.DBInstanceStatus === "stopped" || instance.DBInstanceStatus === "stopping") {
         state = "stopped";
       }
+      const tags = rdsTags(instance.TagList);
+      const tagsHash = hashTags(tags);
       resources.push({
         type: "rds-instance",
         id: instanceId,
         createTime: instance.InstanceCreateTime?.toISOString() ?? new Date().toISOString(),
         startTime,
         state,
-        tags: rdsTags(instance.TagList)
+        tags,
+        tagsHash
       });
     }
   } catch (e) {
@@ -335,6 +366,8 @@ async function describeRdsClusters(clusterId: string): Promise<AutoStateRdsClust
       } else if (cluster.Status === "stopped" || cluster.Status === "stopping") {
         state = "stopped";
       }
+      const tags = rdsTags(cluster.TagList);
+      const tagsHash = hashTags(tags);
       resources.push({
         type: "rds-cluster",
         id: clusterId,
@@ -342,7 +375,8 @@ async function describeRdsClusters(clusterId: string): Promise<AutoStateRdsClust
         startTime: startTime,
         state,
         instanceIds,
-        tags: rdsTags(cluster.TagList)
+        tags,
+        tagsHash
       })
     }
   } catch (e) {
@@ -406,7 +440,8 @@ async function describeEcsService(arn: string): Promise<AutoStateEcsResource[]> 
     services: [serviceName]
   }));
   for (const service of output.services) {
-    const tags = await listTagsForEcsResource(service.serviceArn);
+    const tags = ecsTags(await listTagsForEcsResource(service.serviceArn));
+    const tagsHash = hashTags(tags);
     let state: State = "other";
     if (service.status === "ACTIVE") {
       if (service.desiredCount === 0) {
@@ -423,7 +458,8 @@ async function describeEcsService(arn: string): Promise<AutoStateEcsResource[]> 
       createTime: service.createdAt?.toISOString() ?? new Date().toISOString(),
       startTime: getEcsServiceStartTime(service).toISOString(),
       state,
-      tags: ecsTags(tags),
+      tags,
+      tagsHash,
       cluster,
       serviceName
     });
@@ -431,145 +467,154 @@ async function describeEcsService(arn: string): Promise<AutoStateEcsResource[]> 
   return resources;
 }
 
-async function startExecution(stateMachineArn: string, action?: AutoStateAction, hashId?: boolean): Promise<void> {
+async function startExecution(stateMachineArn: string, resource: AutoStateResource, action?: AutoStateAction): Promise<void> {
   if (action) {
     const input = JSON.stringify(action);
-    console.log("Starting execution of state machine", stateMachineArn, "with input", input);
+    console.log(`Scheduling ${action.resourceType} ${action.resourceId} to ${action.action} at ${action.when}`);
+    console.log("Execution Input: " + input);
     await sfnClient.send(new StartExecutionCommand({
       stateMachineArn,
       input,
-      name: getActionName(action, hashId)
+      name: getActionName(action, resource.tags, resource.type === "ecs-service")
     }));
   }
 }
 
-export async function handleAction(stateMachineArn: string, action: AutoStateAction): Promise<any> {
+export async function processStateAction(stateMachineArn: string, action: AutoStateAction): Promise<AutoStateActionResult | undefined> {
+  console.log(`Processing ${action.action} of ${action.resourceType} ${action.resourceId} at ${action.when}`);
   let resources = [];
-  if (action.resource.type === "ec2-instance") {
-    resources = await describeEc2Instances([action.resource.id]);
+  if (action.resourceType === "ec2-instance") {
+    resources = await describeEc2Instances([action.resourceId]);
   }
-  if (action.resource.type === "rds-instance") {
-    resources = await describeRdsInstances(action.resource.id);
+  if (action.resourceType === "rds-instance") {
+    resources = await describeRdsInstances(action.resourceId);
   }
-  if (action.resource.type === "rds-cluster") {
-    resources = await describeRdsClusters(action.resource.id);
+  if (action.resourceType === "rds-cluster") {
+    resources = await describeRdsClusters(action.resourceId);
   }
-  if (action.resource.type === "ecs-service") {
-    resources = await describeEcsService(action.resource.id);
+  if (action.resourceType === "ecs-service") {
+    resources = await describeEcsService(action.resourceId);
   }
   if (resources.length === 0) {
     return {...action, execute: false, reason: "Instance no longer exists"};
   }
   const resource = resources[0];
-  if (resource.tags.timezone === action.resource.tags.timezone &&
-    resource.tags.startSchedule === action.resource.tags.startSchedule &&
-    resource.tags.stopSchedule === action.resource.tags.stopSchedule &&
-    resource.tags.rebootSchedule === action.resource.tags.rebootSchedule &&
-    resource.tags.maxRuntime === action.resource.tags.maxRuntime &&
-    resource.tags.maxLifetime === action.resource.tags.maxLifetime) {
-    if (action.action === "start") {
-      await startExecution(stateMachineArn, nextAction(resource, action), action.resource.type === "ecs-service");
+  const tagsHash = hashTags(resource.tags);
+  if (tagsHash !== action.tagHash) {
+    console.log(`${action.resourceType} ${action.resourceId} tags do not match execution, doing nothing...`);
+    return {
+      ...action,
+      execute: false,
+      reason: "Tags do not match execution",
+      resource
+    };
+  }
+  if (action.action === "start") {
+    await startExecution(stateMachineArn, resource, nextAction(resource, action));
+    if (resource.state === "stopped") {
+      console.log(`${action.resourceType} ${action.resourceId} is stopped, starting...`);
       return {
         ...action,
-        execute: resource.state === "stopped",
-        reason: resource.state === "stopped" ? "Checks passed" : "Instance is not stopped",
+        execute: true,
+        reason: "Checks passed",
+        resource
       };
-    }
-    if (action.action === "stop" || action.action === "reboot") {
-      await startExecution(stateMachineArn, nextAction(resource, action), action.resource.type === "ecs-service");
-      return {
-        ...action,
-        execute: resource.state === "running",
-        reason: resource.state === "running" ? "Checks passed" : "Instance is not running",
-      };
-    }
-    if (action.action === "terminate") {
-      return {
-        ...action,
-        execute: resource.state !== "terminated",
-        reason: resource.state !== "terminated" ? "Checks passed" : "Instance is already terminated",
-      };
-    }
-  } else {
-    if (action.resource.type === "ecs-service") {
+    } else {
+      console.log(`${action.resourceType} ${action.resourceId} is not stopped, doing nothing...`);
       return {
         ...action,
         execute: false,
-        reason: "Tags do not match"
+        reason: "Instance is not stopped",
+        resource
+      };
+    }
+  }
+  if (action.action === "stop" || action.action === "reboot") {
+    await startExecution(stateMachineArn, resource, nextAction(resource, action));
+    if (resource.state === "running") {
+      console.log(`${action.resourceType} ${action.resourceId} is running, ${action.action === "stop" ? "stopping" : "rebooting"}...`);
+      return {
+        ...action,
+        execute: true,
+        reason: "Checks passed",
+        resource
+      }
+    } else {
+      console.log(`${action.resourceType} ${action.resourceId} is not running, doing nothing...`);
+      return {
+        ...action,
+        execute: false,
+        reason: "Instance is not running",
+        resource
+      }
+    }
+  }
+  if (action.action === "terminate") {
+    if (resource.state !== "terminated") {
+      console.log(`${action.resourceType} ${action.resourceId} is not terminated, terminating...`);
+      return {
+        ...action,
+        execute: true,
+        reason: "Checks passed",
+        resource
+      };
+    } else {
+      console.log(`${action.resourceType} ${action.resourceId} is already terminated, doing nothing...`);
+      return {
+        ...action,
+        execute: false,
+        reason: "Instance is already terminated",
+        resource
       };
     }
   }
 }
 
 export async function handleCloudWatchEvent(stateMachineArn: string, event: any): Promise<void> {
+  console.log(`Processing CloudWatch event ${event.id}`);
+  let resources: AutoStateResource[] = [];
   if ((event["detail-type"] === "Tag Change on Resource" && event.detail.service === "ec2")
     || event["detail-type"] === "EC2 Instance State-change Notification") {
-    console.log("Processing EC2 related event " + event.id);
-    const resources = await describeEc2Instances(event.resources.map(arn => arnparser.parse(arn).resource.replace("instance/", "")));
-    for (const resource of resources) {
-      console.log("Scheduling EC2 instance " + resource.id);
-      const action = nextAction(resource);
-      if (action) {
-        console.log("Next action is " + action.action + " on resource" + resource.id + " at " + action.when);
-        await startExecution(stateMachineArn, action);
-      } else {
-        console.log("No action scheduled for resource " + resource.id);
-      }
-    }
+    resources.push(...await describeEc2Instances(
+        event.resources.map(arn => arnparser.parse(arn).resource.replace("instance/", ""))));
   } else if ((event["detail-type"] === "Tag Change on Resource" && event.detail.service === "rds")
-    || event["detail-type"] === "RDS DB Instance Event" || event["detail-type"] === "RDS DB Cluster Event") {
-    console.log("Processing RDS related event " + event.id);
+      || event["detail-type"] === "RDS DB Instance Event" || event["detail-type"] === "RDS DB Cluster Event") {
     for (const resourceArn of event.resources) {
       const resourceId = arnparser.parse(resourceArn).resource;
-      console.log("Scheduling RDS resource " + resourceId);
-      const resources = resourceId.startsWith("db:")
-        ? await describeRdsInstances(resourceId.replace("db:", ""))
-        : await describeRdsClusters(resourceId.replace("cluster:", ""));
-      for (const resource of resources) {
-        const action = nextAction(resource);
-        if (action) {
-          console.log("Next action is " + action.action + " on resource" + resource.id + " at " + action.when);
-          await startExecution(stateMachineArn, action);
-        } else {
-          console.log("No action scheduled for resource " + resource.id);
-        }
-      }
+      resources.push(...resourceId.startsWith("db:")
+          ? await describeRdsInstances(resourceId.replace("db:", ""))
+          : await describeRdsClusters(resourceId.replace("cluster:", "")));
     }
   } else if ((event["detail-type"] === "Tag Change on Resource" && event.detail.service === "ecs")
-    || event["detail-type"] === "AWS API Call via CloudTrail" && event["source"] === "aws.ecs") {
-    console.log("Processing ECS related event " + event.id);
-    const resources = event["detail-type"] === "AWS API Call via CloudTrail"
-      ? [event.detail.requestParameters.service] : event.resources;
-    for (const resourceArn of resources) {
-      console.log("Scheduling ECS resource " + resourceArn);
-      const resources = await describeEcsService(resourceArn);
-      for (const resource of resources) {
-        const action = nextAction(resource);
-        if (action) {
-          console.log("Next action is " + action.action + " on resource" + resource.id + " at " + action.when);
-          await startExecution(stateMachineArn, action, true);
-        } else {
-          console.log("No action scheduled for resource " + resource.id);
-        }
-      }
+      || event["detail-type"] === "AWS API Call via CloudTrail" && event["source"] === "aws.ecs") {
+    resources.push(...event["detail-type"] === "AWS API Call via CloudTrail"
+        ? [event.detail.requestParameters.service]
+        : event.resources);
+  }
+  for (const resource of resources) {
+    console.log(`Evaluating schedule for ${resource.type} ${resource.id}`);
+    const action = nextAction(resource);
+    if (action) {
+      console.log(`Next action will ${action.action} ${resource.type} ${resource.id} at ${action.when}`);
+      await startExecution(stateMachineArn, resource, action);
+    } else {
+      console.log(`No action scheduled for ${resource.type} ${resource.id}`);
     }
   }
 }
 
 export async function handler(event: any): Promise<any> {
-  console.log("Event", JSON.stringify(event, null, 2));
   const stateMachineArn = event.StateMachine.Id;
   const input = event.Execution.Input;
   if (input.detail) {
     return handleCloudWatchEvent(stateMachineArn, input);
   } else {
     const action = input as AutoStateAction;
-    console.log(`Processing ${action.action} action on ${action.resource.type} ${action.resource.id} at ${action.when}`);
-    if (action.resource.type === "ec2-instance"
-        || action.resource.type === "rds-instance"
-        || action.resource.type === "rds-cluster"
-        || action.resource.type === "ecs-service") {
-      return handleAction(stateMachineArn, action);
+    if (action.resourceType === "ec2-instance"
+        || action.resourceType === "rds-instance"
+        || action.resourceType === "rds-cluster"
+        || action.resourceType === "ecs-service") {
+      return processStateAction(stateMachineArn, action);
     }
   }
 }
