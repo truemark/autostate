@@ -55,7 +55,7 @@ export function cyrb53(str: string, seed: number = 0): number {
   return 4294967296 * (2097151 & h2) + (h1 >>> 0);
 }
 
-function hashTags(tags: AutoStateTags): string {
+function hashTagsV1(tags: AutoStateTags): string {
   return "V1" + cyrb53(`${tags.timezone ?? ""}|${tags.startSchedule ?? ""}|` +
     `${tags.stopSchedule ?? ""}|${tags.rebootSchedule ?? ""}|` +
     `${tags.maxRuntime ?? ""}|${tags.maxLifetime ?? ""}`);
@@ -101,7 +101,7 @@ interface AutoStateActionResult extends AutoStateAction {
 function getActionName(action: AutoStateAction, tags: AutoStateTags, hashId?: boolean): string {
   const id = hashId ? cyrb53(action.resourceId) : action.resourceId;
   return `${action.resourceType}-${id}-${action.action}-` +
-    `${DateTime.fromISO(action.when).toFormat("yyyy-MM-dd-HH-mm")}-${hashTags(tags)}`;
+    `${DateTime.fromISO(action.when).toFormat("yyyy-MM-dd-HH-mm")}-${hashTagsV1(tags)}`;
 }
 
 function optionalNumber(value: string | undefined): number | undefined {
@@ -131,7 +131,7 @@ function cronAction(resource: AutoStateResource, action: Action, cronExpression:
       resourceId: resource.id,
       when: expression.next().toISOString(),
       action,
-      tagHash: hashTags(resource.tags),
+      tagHash: hashTagsV1(resource.tags),
     };
   }
 }
@@ -183,7 +183,7 @@ function durationAction(resource: AutoStateResource, action: Action, duration?: 
       resourceId: resource.id,
       when: when.toISOString(),
       action,
-      tagHash: hashTags(resource.tags)
+      tagHash: hashTagsV1(resource.tags)
     };
   }
   return undefined;
@@ -253,7 +253,7 @@ async function describeEc2Instances(instanceIds: string[]): Promise<AutoStateRes
         state = "terminated";
       }
       const tags = getEc2Tags(instance.Tags);
-      const tagsHash = hashTags(tags);
+      const tagsHash = hashTagsV1(tags);
       resources.push({
         type: "ec2-instance",
         id: instance.InstanceId,
@@ -330,7 +330,7 @@ async function describeRdsInstances(instanceId: string): Promise<AutoStateResour
         state = "stopped";
       }
       const tags = rdsTags(instance.TagList);
-      const tagsHash = hashTags(tags);
+      const tagsHash = hashTagsV1(tags);
       resources.push({
         type: "rds-instance",
         id: instanceId,
@@ -367,7 +367,7 @@ async function describeRdsClusters(clusterId: string): Promise<AutoStateRdsClust
         state = "stopped";
       }
       const tags = rdsTags(cluster.TagList);
-      const tagsHash = hashTags(tags);
+      const tagsHash = hashTagsV1(tags);
       resources.push({
         type: "rds-cluster",
         id: clusterId,
@@ -441,7 +441,7 @@ async function describeEcsService(arn: string): Promise<AutoStateEcsResource[]> 
   }));
   for (const service of output.services) {
     const tags = ecsTags(await listTagsForEcsResource(service.serviceArn));
-    const tagsHash = hashTags(tags);
+    const tagsHash = hashTagsV1(tags);
     let state: State = "other";
     if (service.status === "ACTIVE") {
       if (service.desiredCount === 0) {
@@ -499,7 +499,7 @@ export async function processStateAction(stateMachineArn: string, action: AutoSt
     return {...action, execute: false, reason: "Instance no longer exists"};
   }
   const resource = resources[0];
-  const tagsHash = hashTags(resource.tags);
+  const tagsHash = hashTagsV1(resource.tags);
   if (tagsHash !== action.tagHash) {
     console.log(`${action.resourceType} ${action.resourceId} tags do not match execution, doing nothing...`);
     return {
