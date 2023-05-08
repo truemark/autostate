@@ -62,8 +62,17 @@ Start an instance every 30 minutes and shut it down 10 minutes after it starts o
 
 ## Caveats
 
- * RDS doesn't allow asterisks in tag values so use hyphens instead when defining cron expressions
- * terminate-schedule and reboot-schedule tags are ignored for ECS services
+ * RDS doesn't allow asterisks or commas in tag values so use hyphens and colons instead when defining cron expressions
+    Start an RDS cluster every 30 minutes and shut it down 15 minutes after it starts on weekdays.
+    ```json
+    {
+      "autostate:start-schedule": "0:30 - - - 1-5", 
+      "autostate:max-runtime": "10"
+    }
+    ```
+
+ * The terminate-schedule and reboot-schedule tags are ignored for ECS services.
+
  * RDS doesn't allow termination of RDS clusters when they are stopped
 
 ## References

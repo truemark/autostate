@@ -114,7 +114,11 @@ function optionalCron(value: string | undefined, tz: string): CronExpression | u
     if (parts.length !== 5) {
       throw new Error(`Invalid cron expression: ${value}. Expecting 5 fields and received ${parts.length}}`);
     }
-    return cron.parseExpression(value.replaceAll("-", "*"), {
+    if (parts[0].trim() === "*" || parts[0].trim() === "-") {
+      throw new Error("Invalid cron expression. The use * or - in the minute field is not allowed.");
+    }
+    const cleaned = value.trim().replaceAll(" -", " *").replaceAll(":", ",");
+    return cron.parseExpression(cleaned, {
       tz,
       currentDate: new Date(Date.now() + 60000), // look 1 minute in the future to be safe
     })
