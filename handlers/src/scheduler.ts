@@ -625,6 +625,8 @@ export async function handler(event: any): Promise<any> {
         || action.resourceType === "rds-cluster"
         || action.resourceType === "ecs-service") {
       return processStateAction(stateMachineArn, action);
+    } else {
+      throw new Error(`Unsupported resource type ${action.resourceType}`);
     }
   }
 }
