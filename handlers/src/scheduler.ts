@@ -303,7 +303,7 @@ function rdsTags(tags?: RdsTag[]): AutoStateTags {
   }
   const autoStateTags = tags.reduce((tags, tag) => {
     if (tag.Key === "autostate:stop-schedule"
-      || tag.Key === "autostate.start-schedule"
+      || tag.Key === "autostate:start-schedule"
       || tag.Key === "autostate:reboot-schedule"
       || tag.Key === "autostate:max-runtime"
       || tag.Key === "autostate:max-lifetime"
@@ -424,7 +424,7 @@ function ecsTags(tags?: EcsTag[]): AutoStateTags {
   }
   const autoStateTags = tags?.reduce((tags, tag) => {
     if (tag.key === "autostate:stop-schedule"
-      || tag.key === "autostate.start-schedule"
+      || tag.key === "autostate:start-schedule"
       || tag.key === "autostate:reboot-schedule"
       || tag.key === "autostate:max-runtime"
       || tag.key === "autostate:max-lifetime"
