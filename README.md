@@ -1,6 +1,6 @@
 # Auto State
 
-This AWS CDK project deploys resources to automatically start, stop, reboot and terminate resources.
+An AWS CDK project that automatically starts, stops, reboots and terminates resources through tags.
 
 ## Supported Resource Types
  * EC2 Instances
