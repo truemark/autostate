@@ -597,9 +597,12 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
     }
   } else if ((event["detail-type"] === "Tag Change on Resource" && event.detail.service === "ecs")
       || event["detail-type"] === "AWS API Call via CloudTrail" && event["source"] === "aws.ecs") {
-    resources.push(...event["detail-type"] === "AWS API Call via CloudTrail"
+    const arns = [...event["detail-type"] === "AWS API Call via CloudTrail"
         ? [event.detail.requestParameters.service]
-        : event.resources);
+        : event.resources];
+    for (const arn of arns) {
+      resources.push(...await describeEcsService(arn));
+    }
   }
   for (const resource of resources) {
     console.log(`Evaluating schedule for ${resource.type} ${resource.id}`);
