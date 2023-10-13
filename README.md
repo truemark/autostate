@@ -2,6 +2,11 @@
 
 An AWS CDK project that automatically starts, stops, reboots and terminates resources through tags.
 
+## CDK Setup
+
+In order to use this project you must have the AWS CDK installed and configured. You will also either need to have esbuild 
+installed globally ` npm i -g esbuild` or have docker running and be logged into AWS ECR. `aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws`
+
 ## Supported Resource Types
  * EC2 Instances
  * RDS Instances
