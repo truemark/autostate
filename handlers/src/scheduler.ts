@@ -100,8 +100,8 @@ interface AutoStateActionResult extends AutoStateAction {
 
 function getActionName(action: AutoStateAction, tags: AutoStateTags, hashId?: boolean): string {
   const id = hashId ? cyrb53(action.resourceId) : action.resourceId;
-  return `${action.resourceType}-${id}-${action.action}-` +
-    `${DateTime.fromISO(action.when).toFormat("yyyy-MM-dd-HH-mm")}-${hashTagsV1(tags)}`;
+  return (`${action.resourceType}-${id}-${action.action}-` +
+    `${DateTime.fromISO(action.when).toFormat("yyyy-MM-dd-HH-mm")}-${hashTagsV1(tags)}`).slice(0,80);
 }
 
 function optionalNumber(value: string | undefined): number | undefined {
