@@ -3,10 +3,13 @@ import {Duration, RemovalPolicy} from "aws-cdk-lib"
 import {IEventBus, Rule} from "aws-cdk-lib/aws-events"
 import {Queue, QueueEncryption} from "aws-cdk-lib/aws-sqs"
 import {SchedulerFunction} from "./scheduler-function"
+import * as Logs from "aws-cdk-lib/aws-logs"
+import * as Iam from "aws-cdk-lib/aws-iam"
 import {
   Choice,
   Condition, Fail,
   JsonPath,
+  LogLevel,
   Pass,
   StateMachine,
   StateMachineType,
@@ -308,11 +311,37 @@ export class AutoState extends Construct {
       cause: "Unknown event type",
     }));
 
+    //  This is where the state machine will write logs.
+    const logGroup = new Logs.LogGroup(this, "/autostate-execution-logs/", {});
+
     const stateMachine = new StateMachine(this, "Default", {
       definition: addExecutionContext.next(eventRouter),
       stateMachineType: StateMachineType.STANDARD,
       removalPolicy: RemovalPolicy.DESTROY,
+      logs: {
+        destination: logGroup,
+        level: LogLevel.ALL,
+      },
     });
+
+    // Grant the state machine role the ability to create and deliver to a log stream.
+    stateMachine.addToRolePolicy(
+      new Iam.PolicyStatement({
+        actions: [
+          "logs:CreateLogDelivery",
+          "logs:CreateLogStream",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutLogEvents",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups"
+        ],
+        resources: ['*'],
+      })
+    );
 
     // TODO Add alarm on dead letter queue
     const deadLetterQueue = new Queue(this, "DeadLetterQueue", {
