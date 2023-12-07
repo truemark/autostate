@@ -144,12 +144,15 @@ function cronActions(resource: AutoStateResource): AutoStateAction[] {
   const actions: AutoStateAction[] = [];
   if (resource.tags.startSchedule) {
     const start = cronAction(resource, "start", resource.tags.startSchedule);
+    console.log(`cronActions start ${start}`)
     if (start) {
       actions.push(start);
     }
   }
   if (resource.tags.stopSchedule) {
     const stop = cronAction(resource, "stop", resource.tags.stopSchedule);
+    console.log(`cronActions stop ${stop}`)
+
     if (stop) {
       actions.push(stop);
     }
@@ -157,6 +160,8 @@ function cronActions(resource: AutoStateResource): AutoStateAction[] {
   // ECS services don't support reboot
   if (resource.type !== "ecs-service" && resource.tags.rebootSchedule) {
     const reboot = cronAction(resource, "reboot", resource.tags.rebootSchedule);
+    console.log(`cronActions reboot ${reboot}`)
+
     if (reboot) {
       actions.push(reboot);
     }
@@ -451,6 +456,7 @@ async function describeEcsService(arn: string): Promise<AutoStateEcsResource[]> 
   }));
   for (const service of output.services) {
     const tags = ecsTags(await listTagsForEcsResource(service.serviceArn));
+    console.log(`describeEcsService tags are: ${tags}, service.status is ${service.status}, service.desired_count is ${service.desiredCount}, start time is ${getEcsServiceStartTime(service).toISOString()}`)
     const tagsHash = hashTagsV1(tags);
     let state: State = "other";
     if (service.status === "ACTIVE") {
@@ -600,12 +606,12 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
     const arns = [...event["detail-type"] === "AWS API Call via CloudTrail"
         ? [event.detail.requestParameters.service]
         : event.resources];
+    console.log(`arns is ${arns}`)
     for (const arn of arns) {
       resources.push(...await describeEcsService(arn));
     }
   }
   for (const resource of resources) {
-    console.log(`Evaluating schedule for ${resource.type} ${resource.id}`);
     const action = nextAction(resource);
     if (action) {
       console.log(`Next action will ${action.action} ${resource.type} ${resource.id} at ${action.when}`);
@@ -619,6 +625,7 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
 export async function handler(event: any): Promise<any> {
   const stateMachineArn = event.StateMachine.Id;
   const input = event.Execution.Input;
+  console.log(`state machine arn is ${stateMachineArn}, input is ${input}`);
   if (input.detail) {
     return handleCloudWatchEvent(stateMachineArn, input);
   } else {
