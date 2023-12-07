@@ -142,13 +142,17 @@ function cronAction(resource: AutoStateResource, action: Action, cronExpression:
 
 function cronActions(resource: AutoStateResource): AutoStateAction[] {
   const actions: AutoStateAction[] = [];
+  console.log(`start schedule is ${resource.tags.startSchedule}. If it is undefined, check the tags.`)
   if (resource.tags.startSchedule) {
     const start = cronAction(resource, "start", resource.tags.startSchedule);
     console.log(`cronActions start ${start}`)
+
     if (start) {
       actions.push(start);
     }
   }
+
+  console.log(`stop schedule is ${resource.tags.stopSchedule}. If it is undefined, check the tags.`)
   if (resource.tags.stopSchedule) {
     const stop = cronAction(resource, "stop", resource.tags.stopSchedule);
     console.log(`cronActions stop ${stop}`)
@@ -594,7 +598,7 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
     resources.push(...await describeEc2Instances(
         event.resources.map(arn => arnparser.parse(arn).resource.replace("instance/", ""))));
   } else if ((event["detail-type"] === "Tag Change on Resource" && event.detail.service === "rds")
-      || event["detail-type"] === "RDS DB Instance Event" || event["detail-type"] === "RDS DB Cluster Event") {
+    || event["detail-type"] === "RDS DB Instance Event" || event["detail-type"] === "RDS DB Cluster Event") {
     for (const resourceArn of event.resources) {
       const resourceId = arnparser.parse(resourceArn).resource;
       resources.push(...resourceId.startsWith("db:")
