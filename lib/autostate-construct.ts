@@ -3,10 +3,13 @@ import {Duration, RemovalPolicy} from "aws-cdk-lib"
 import {IEventBus, Rule} from "aws-cdk-lib/aws-events"
 import {Queue, QueueEncryption} from "aws-cdk-lib/aws-sqs"
 import {SchedulerFunction} from "./scheduler-function"
+import * as Logs from "aws-cdk-lib/aws-logs"
+import * as Iam from "aws-cdk-lib/aws-iam"
 import {
   Choice,
   Condition, Fail,
   JsonPath,
+  LogLevel,
   Pass,
   StateMachine,
   StateMachineType,
