@@ -62,7 +62,7 @@ Start an instance every 30 minutes and shut it down 10 minutes after it starts o
 
 ## Caveats
 
- * RDS doesn't allow asterisks or commas in tag values so use hyphens and colons instead when defining cron expressions
+ * ECS and RDS don't allow asterisks or commas in tag values so use hyphens and colons instead when defining cron expressions
     Start an RDS cluster every 30 minutes and shut it down 15 minutes after it starts on weekdays.
     ```json
     {
@@ -79,3 +79,33 @@ Start an instance every 30 minutes and shut it down 10 minutes after it starts o
 
 This project is also published as a AWS CDK Construct for use in your own stacks.
 See https://github.com/truemark/cdk-autostate
+
+## Troubleshooting
+
+### How can I tell if the task is scheduled?
+Within the AWS console, open the State machine named with the prefix AutoState. 
+![Alt text](img/image.png)
+
+The state machine page will display all executions on the bottom of the screen. 
+![Alt text](img/image-1.png)
+The executions with non intuitive hex names are scheduler jobs. They execute, schedule actions, and quit. The executions with service name prefixes (ecs-service, rds-instance) are the scheduled state changes. To see the details behind one of the jobs, double click on it. 
+
+Within the next screen, click on Execution input and output. 
+![Alt text](img/image-2.png)
+We can now view the action, resource, and time scheduled. 
+![Alt text](img/image-3.png)
+
+### Changing Tags
+When tags are changed, Autostate schedules the actions like nothing is currently scheduled. In other words, any future scheduled actions spinning away in the Autostate state machine are still present. They will need to be killed manually, as they will still manipulate the service in it's scheduled manner, at it's scheduled time. 
+
+For example, ext1 is scheduled to start on the 11th. 
+![Alt text](img/image-5.png)
+![Alt text](img/image-4.png)
+
+When I change the tags, in this case from 23:00 to 23:01
+![Alt text](img/image-6.png)
+the new schedule is fired, and the old one is still present. 
+![Alt text](img/image-7.png)
+In order to ensure service manpulation on the correct schedule, manually stop the old execution.
+
+![Alt text](img/image-8.png)
