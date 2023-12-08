@@ -343,12 +343,6 @@ export class AutoState extends Construct {
       })
     );
 
-    // const stateMachine = new StateMachine(this, "Default", {
-    //   definition: addExecutionContext.next(eventRouter),
-    //   stateMachineType: StateMachineType.STANDARD,
-    //   removalPolicy: RemovalPolicy.DESTROY,
-    // });
-
     // TODO Add alarm on dead letter queue
     const deadLetterQueue = new Queue(this, "DeadLetterQueue", {
       encryption: QueueEncryption.SQS_MANAGED,
