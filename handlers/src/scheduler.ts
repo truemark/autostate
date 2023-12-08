@@ -598,7 +598,7 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
     resources.push(...await describeEc2Instances(
         event.resources.map(arn => arnparser.parse(arn).resource.replace("instance/", ""))));
   } else if ((event["detail-type"] === "Tag Change on Resource" && event.detail.service === "rds")
-    || event["detail-type"] === "RDS DB Instance Event" || event["detail-type"] === "RDS DB Cluster Event") {
+      || event["detail-type"] === "RDS DB Instance Event" || event["detail-type"] === "RDS DB Cluster Event") {
     for (const resourceArn of event.resources) {
       const resourceId = arnparser.parse(resourceArn).resource;
       resources.push(...resourceId.startsWith("db:")
