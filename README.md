@@ -23,7 +23,7 @@ An AWS CDK project that automatically starts, stops, reboots and terminates reso
 | autostate:desired-count             | Applies to ECS. The number of tasks to run for the service when starting. Default 1.                               |
 
 
-### Con Expressions
+### Cron Expressions
 ```
  *    *    *    *    *
  ┬    ┬    ┬    ┬    ┬
