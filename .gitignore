@@ -4,6 +4,9 @@
 node_modules
 notes.txt
 
+# macos garbage
+.DS_Store
+
 # CDK asset staging directory
 .cdk.staging
 cdk.out
