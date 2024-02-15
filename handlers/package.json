@@ -3,9 +3,13 @@
   "version": "0.1.1",
   "scripts": {
     "build": "tsc",
+    "postbuild": "prettier --check . && gts lint",
     "watch": "tsc -w",
     "test": "jest",
-    "sanity": "jest --group=integration/sanity"
+    "sanity": "jest --group=integration/sanity",
+    "lint": "gts lint",
+    "posttest": "npm run lint",
+    "makepretty": "prettier --write ."
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.100",

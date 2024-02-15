@@ -1,11 +1,6 @@
 pnpm-lock.yaml
 cdk.out
 node_modules
-handlers
-lib/*.js
-lib/*.d.ts
-bin/*.js
-bin/*.d.ts
-test/*.js
-test/*.d.ts
+src/*.js
+src/*.d.ts
 *.map

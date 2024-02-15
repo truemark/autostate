@@ -18,7 +18,14 @@ export class SchedulerFunction extends NodejsFunction {
       memorySize: 512,
       timeout: Duration.seconds(300),
       logRetention: RetentionDays.ONE_MONTH,
-      entry: path.join(__dirname, '..', '..', 'handlers', 'src', 'scheduler.ts'),
+      entry: path.join(
+        __dirname,
+        '..',
+        '..',
+        'handlers',
+        'src',
+        'scheduler.ts'
+      ),
       handler: 'handler',
       environment: {
         TAG_PREFIX: props.tagPrefix,

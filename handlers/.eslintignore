@@ -1,8 +1,6 @@
 cdk.out
 node_modules
-lib/*.js
-lib/*.d.ts
-bin/*.js
-bin/*.d.ts
-test/*.js
-test/*.d.ts
+src/*.d.ts
+src/*.js
+src/*.map
+
