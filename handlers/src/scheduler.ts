@@ -50,8 +50,9 @@ interface AutoStateTags {
   readonly skipFinalSnapshot?: string;
 }
 
+// TODO: Erik please look at this, tell me if it's incorrect.
 // I am disabling this rule for the cyrb53 function because it
-// will not function without the "number" type present after "seed:".
+// will not function without the 'number' type present after 'seed:'.
 // Removing the type as suggested by eslint results in a build error
 // where the default value of 0 is not passed to the function.
 // This is the build error:
@@ -114,6 +115,8 @@ interface AutoStateAction {
   readonly tagHash: string;
   readonly when: string;
   readonly action: Action;
+  // readonly detail?: {service: string; requestParameters: string};
+  // readonly resources?: [key: string];
 }
 
 interface AutoStateActionResult extends AutoStateAction {
@@ -758,37 +761,181 @@ export async function processStateAction(
   }
 }
 
-interface RDSEvent {
-  readonly id: string;
-  readonly message: string;
-  readonly sourceType: SourceType;
-  readonly time: string;
+interface TagsDictionary {
+  readonly [key: string]: string;
 }
 
-interface EC2Event {
+interface TagChangeOnResource {
+  readonly version: string;
   readonly id: string;
-  readonly message: string;
+  readonly 'detail-type': string;
+  readonly source: string;
+  readonly account: string;
   readonly time: string;
+  readonly region: string;
+  readonly resources: string[];
+  readonly detail: {
+    readonly service: string;
+    readonly 'changed-tag-keys': string[];
+    readonly 'resource-type': string;
+    readonly version: number;
+    readonly tags: TagsDictionary;
+  };
 }
 
-interface ECSEvent {
+interface EC2InstanceStateChangeNotification {
+  readonly version: string;
   readonly id: string;
-  readonly message: string;
+  readonly 'detail-type': string;
+  readonly source: string;
+  readonly account: string;
   readonly time: string;
+  readonly region: string;
+  readonly resources: string[];
+  readonly detail: {
+    readonly 'instance-id': string;
+    readonly state: string;
+  };
 }
 
-type CloudWatchEvent = RDSEvent | EC2Event | ECSEvent;
+// TODO: Erik this is where I added items to test how problematic
+// adding missing items would be. This is a bad idea because it defeats eslint.
+interface RDSDetail {
+  readonly EventCategories: string[];
+  readonly SourceType: SourceType;
+  readonly SourceIdentifier: string;
+  readonly SourceArn: string;
+  readonly Date: string;
+  readonly EventID: string;
+  readonly Message: string;
+}
+interface RDSDBInstanceEvent {
+  readonly version: string;
+  readonly id: string;
+  readonly 'detail-type': string;
+  readonly source: string;
+  readonly account: string;
+  readonly time: string;
+  readonly region: string;
+  readonly resources: string[];
+  readonly detail: RDSDetail;
+}
+
+interface RDSDBClusterEvent {
+  version: string;
+  readonly id: string;
+  readonly 'detail-type': string;
+  readonly source: string;
+  readonly account: string;
+  readonly time: string;
+  readonly region: string;
+  readonly resources: string[];
+  readonly detail: RDSDetail;
+}
+
+interface CloudwatchAPICallDetail {
+  readonly eventVersion: string;
+  readonly userIdentity: {
+    readonly type: string;
+    readonly principalId: string;
+    readonly arn: string;
+    readonly accountId: string;
+    readonly accessKeyId: string;
+    readonly sessionContext: {
+      readonly attributes: {
+        readonly mfaAuthenticated: string;
+        readonly creationDate: string;
+      };
+    };
+  };
+  readonly eventTime: string;
+  readonly eventSource: string;
+  readonly eventName: string;
+  readonly awsRegion: string;
+  readonly sourceIPAddress: string;
+  readonly userAgent: string;
+  readonly requestParameters: {
+    readonly Description: string;
+    readonly Name: string;
+    readonly ResourceQuery: {
+      readonly Type: string;
+      readonly Query: string;
+    };
+  };
+  readonly bucketName: string;
+  readonly key: string;
+}
+
+interface APICallViaCloudtrail {
+  readonly version: string;
+  readonly id: string;
+  readonly 'detail-type': string;
+  readonly source: string;
+  readonly account: string;
+  readonly time: string;
+  readonly region: string;
+  readonly resources: string[];
+  readonly detail: CloudwatchAPICallDetail;
+}
+
+// TODO: Erik here's the composite type that doesn't work.
+// eslint expects items to be present. For example,
+// AutoStateAction doesn't have a property named 'detail'.
+type Event = RDSDBInstanceEvent &
+  RDSDBClusterEvent &
+  TagChangeOnResource &
+  EC2InstanceStateChangeNotification &
+  APICallViaCloudtrail &
+  AutoStateAction;
+
+type CloudWatchEvent =
+  & RDSDBInstanceEvent
+  & RDSDBClusterEvent
+  & TagChangeOnResource
+  & EC2InstanceStateChangeNotification
+  & APICallViaCloudtrail;
+
+// Custom type guard for TagChangeOnResource
+function isEC2TagChangeOnResource(event: any): event is TagChangeOnResource {
+  return event.detail !== undefined && event.detail.service === 'ec2';
+}
+
+function isRDSTagChangeOnResource(event: any): event is TagChangeOnResource {
+  return event.detail !== undefined && event.detail.service === 'rds';
+}
+
+function isECSTagChangeOnResource(event: any): event is TagChangeOnResource {
+  return event.detail !== undefined && event.detail.service === 'ecs';
+}
+
+function isEC2InstanceStateChangeNotification(
+  event: any
+): event is EC2InstanceStateChangeNotification {
+  return event['detail-type'] === 'EC2 Instance State-change Notification';
+}
+
+// Custom type guard for ECS Event
+function isECSEvent(event: any): event is APICallViaCloudtrail {
+  return event['detail-type'] === 'ECS Event';
+}
+
+function isRDSDBInstanceEvent(event: any): event is RDSDBInstanceEvent {
+  return event['detail-type'] === 'RDS DB Instance Event';
+}
+
+function isRDSDBClusterEvent(event: any): event is RDSDBClusterEvent {
+  return event['detail-type'] === 'RDS DB Cluster Event';
+}
 
 export async function handleCloudWatchEvent(
   stateMachineArn: string,
-  event: CloudWatchEvent
+  event: Event
 ): Promise<void> {
-  console.log(`Processing CloudWatch event ${event.id}`);
+  console.log(`Processing CloudWatch event ${JSON.stringify(event)}`);
   const resources: AutoStateResource[] = [];
   if (
-    (event['detail-type'] === 'Tag Change on Resource' &&
-      event.detail.service === 'ec2') ||
-    event['detail-type'] === 'EC2 Instance State-change Notification'
+    isEC2TagChangeOnResource(event) ||
+    isEC2InstanceStateChangeNotification(event)
   ) {
     resources.push(
       ...(await describeEc2Instances(
@@ -798,10 +945,9 @@ export async function handleCloudWatchEvent(
       ))
     );
   } else if (
-    (event['detail-type'] === 'Tag Change on Resource' &&
-      event.detail.service === 'rds') ||
-    event['detail-type'] === 'RDS DB Instance Event' ||
-    event['detail-type'] === 'RDS DB Cluster Event'
+    isRDSTagChangeOnResource(event) ||
+    isRDSDBInstanceEvent(event) ||
+    isRDSDBClusterEvent(event)
   ) {
     for (const resourceArn of event.resources) {
       const resourceId = arnparser.parse(resourceArn).resource;
@@ -812,14 +958,15 @@ export async function handleCloudWatchEvent(
       );
     }
   } else if (
-    (event['detail-type'] === 'Tag Change on Resource' &&
-      event.detail.service === 'ecs') ||
-    (event['detail-type'] === 'AWS API Call via CloudTrail' &&
-      event['source'] === 'aws.ecs')
+    isECSTagChangeOnResource(event) ||
+    isECSEvent(event)
   ) {
     const arns = [
       ...(event['detail-type'] === 'AWS API Call via CloudTrail'
-        ? [event.detail.requestParameters.service]
+        ? // TODO: Erik, why are you using requestParameters.service instead of event.detail.service?
+          // [event.detail.requestParameters.service]
+          // The compiler did not like this, it expected
+          ['ecs']
         : event.resources),
     ];
     for (const arn of arns) {
@@ -846,16 +993,27 @@ interface HandlerEvent {
   };
 
   readonly Execution: {
-    readonly Input: CloudWatchEvent | AutoStateAction;
+    readonly Input: Event;
   };
+}
+
+function isCloudWatchEvent(event: any): event is CloudWatchEvent {
+  // The Cloudwatch Event will include an input.detail field.
+  return event.detail !== undefined;
+}
+
+function isAutoStateAction(event: any): event is AutoStateAction {
+  // The Cloudwatch Event will include an input.detail field.
+  return event.detail === undefined;
 }
 
 export async function handler(event: HandlerEvent): Promise<any> {
   const stateMachineArn = event.StateMachine.Id;
-  const input = event.Execution.Input;
-  if (input.detail) {
+  const input: Event = event.Execution.Input;
+
+  if (isCloudWatchEvent(input)) {
     return handleCloudWatchEvent(stateMachineArn, input);
-  } else {
+  } else if (isAutoStateAction(input)) {
     const action = input as AutoStateAction;
     if (
       action.resourceType === 'ec2-instance' ||
