@@ -1,0 +1,25 @@
+{
+  "name": "autostate",
+  "version": "0.1.0",
+  "scripts": {
+    "install-handlers": "cd handlers && pnpm i --frozen-lockfile",
+    "install-cdk": "cd cdk && pnpm i --frozen-lockfile",
+    "install-all": "concurrently \"pnpm:install-handlers\" \"pnpm:install-cdk\" -c blue,green",
+    "postinstall": "pnpm run install-all",
+    "build-handlers": "cd handlers && pnpm run build",
+    "build-cdk": "cd cdk && pnpm run build",
+    "build": "concurrently \"pnpm:build-handlers\" \"pnpm:build-cdk\" -c blue,green",
+    "makepretty-handlers": "cd handlers && pnpm run makepretty",
+    "makepretty-cdk": "cd cdk && pnpm run makepretty",
+    "makepretty": "concurrently \"pnpm:makepretty-handlers\" \"pnpm:makepretty-cdk\" -c blue,green",
+    "watch-handlers": "cd handlers && pnpm run watch",
+    "watch-cdk": "cd cdk && cdk watch Funding/Api",
+    "watch": "concurrently \"pnpm:watch-handlers\" \"pnpm:watch-cdk\" -c red,green"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.76.0"
+  }
+}
