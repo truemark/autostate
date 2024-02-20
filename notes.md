@@ -4,10 +4,10 @@ This is a challenge, because specific elements exist in some events and not othe
 
 I could only declare the pieces I need, but then what is the point of the interface? In order to make that work, I think I'd need to disable a rule in eslint. I don't want to do that, either. I could declare everything as not required, but that defeats the purpose also. 
 
-handleCloudwatchEvent is quite problematic. Each event has a detail type. I'm thinking I can make eslint happy by creating a 
+handleCloudwatchEvent is quite problematic. Each event has a detail type. I ended up writing multiple verbose type guards. 
 
 
-Tag Change on Resource, handled by TagRule. The code that responds to this event 
+Tag Change on Resource Event, handled by TagRule. The code that responds to this event schedules a new execution of AutoState.
 
 ```
 {
