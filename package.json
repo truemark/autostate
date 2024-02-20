@@ -14,7 +14,8 @@
     "makepretty": "concurrently \"pnpm:makepretty-handlers\" \"pnpm:makepretty-cdk\" -c blue,green",
     "watch-handlers": "cd handlers && pnpm run watch",
     "watch-cdk": "cd cdk && cdk watch Funding/Api",
-    "watch": "concurrently \"pnpm:watch-handlers\" \"pnpm:watch-cdk\" -c red,green"
+    "watch": "concurrently \"pnpm:watch-handlers\" \"pnpm:watch-cdk\" -c red,green",
+    "lint": "gts lint"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

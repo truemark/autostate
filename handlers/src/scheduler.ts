@@ -888,43 +888,63 @@ type Event = RDSDBInstanceEvent &
   APICallViaCloudtrail &
   AutoStateAction;
 
-type CloudWatchEvent =
-  & RDSDBInstanceEvent
-  & RDSDBClusterEvent
-  & TagChangeOnResource
-  & EC2InstanceStateChangeNotification
-  & APICallViaCloudtrail;
+type CloudWatchEvent = RDSDBInstanceEvent &
+  RDSDBClusterEvent &
+  TagChangeOnResource &
+  EC2InstanceStateChangeNotification &
+  APICallViaCloudtrail;
 
 // Custom type guard for TagChangeOnResource
-function isEC2TagChangeOnResource(event: any): event is TagChangeOnResource {
+function isEC2TagChangeOnResource(
+  event: TagChangeOnResource
+): event is TagChangeOnResource {
   return event.detail !== undefined && event.detail.service === 'ec2';
 }
 
-function isRDSTagChangeOnResource(event: any): event is TagChangeOnResource {
+function isRDSTagChangeOnResource(
+  event: TagChangeOnResource
+): event is TagChangeOnResource {
   return event.detail !== undefined && event.detail.service === 'rds';
 }
 
-function isECSTagChangeOnResource(event: any): event is TagChangeOnResource {
+function isECSTagChangeOnResource(
+  event: TagChangeOnResource
+): event is TagChangeOnResource {
   return event.detail !== undefined && event.detail.service === 'ecs';
 }
 
 function isEC2InstanceStateChangeNotification(
-  event: any
+  event: EC2InstanceStateChangeNotification
 ): event is EC2InstanceStateChangeNotification {
-  return event['detail-type'] === 'EC2 Instance State-change Notification';
+  return (
+    event.detail !== undefined &&
+    event['detail-type'] === 'EC2 Instance State-change Notification'
+  );
 }
 
 // Custom type guard for ECS Event
-function isECSEvent(event: any): event is APICallViaCloudtrail {
-  return event['detail-type'] === 'ECS Event';
+function isECSEvent(
+  event: APICallViaCloudtrail
+): event is APICallViaCloudtrail {
+  return event['detail-type'] === 'ECS Event' && event.detail !== undefined;
 }
 
-function isRDSDBInstanceEvent(event: any): event is RDSDBInstanceEvent {
-  return event['detail-type'] === 'RDS DB Instance Event';
+function isRDSDBInstanceEvent(
+  event: RDSDBInstanceEvent
+): event is RDSDBInstanceEvent {
+  return (
+    event['detail-type'] === 'RDS DB Instance Event' &&
+    event.detail !== undefined
+  );
 }
 
-function isRDSDBClusterEvent(event: any): event is RDSDBClusterEvent {
-  return event['detail-type'] === 'RDS DB Cluster Event';
+function isRDSDBClusterEvent(
+  event: RDSDBClusterEvent
+): event is RDSDBClusterEvent {
+  return (
+    event['detail-type'] === 'RDS DB Cluster Event' &&
+    event.detail !== undefined
+  );
 }
 
 export async function handleCloudWatchEvent(
@@ -933,18 +953,8 @@ export async function handleCloudWatchEvent(
 ): Promise<void> {
   console.log(`Processing CloudWatch event ${JSON.stringify(event)}`);
   const resources: AutoStateResource[] = [];
+
   if (
-    isEC2TagChangeOnResource(event) ||
-    isEC2InstanceStateChangeNotification(event)
-  ) {
-    resources.push(
-      ...(await describeEc2Instances(
-        event.resources.map(arn =>
-          arnparser.parse(arn).resource.replace('instance/', '')
-        )
-      ))
-    );
-  } else if (
     isRDSTagChangeOnResource(event) ||
     isRDSDBInstanceEvent(event) ||
     isRDSDBClusterEvent(event)
@@ -957,15 +967,30 @@ export async function handleCloudWatchEvent(
           : await describeRdsClusters(resourceId.replace('cluster:', '')))
       );
     }
-  } else if (
-    isECSTagChangeOnResource(event) ||
-    isECSEvent(event)
+
+    // } else if ( // TODO: Erik, this does not work. A new if does. Why? In theory it will still work.
+    // The error is " error TS2339: Property 'resources' does not exist on type 'never'."
+  }
+  if (
+    isEC2TagChangeOnResource(event) ||
+    isEC2InstanceStateChangeNotification(event)
   ) {
+    resources.push(
+      ...(await describeEc2Instances(
+        event.resources.map(arn =>
+          arnparser.parse(arn).resource.replace('instance/', '')
+        )
+      ))
+    );
+
+    // } else if ( // TODO: Erik, this does not work. A new if does. Why? In theory a new if will still work.
+  }
+  if (isECSTagChangeOnResource(event) || isECSEvent(event)) {
     const arns = [
       ...(event['detail-type'] === 'AWS API Call via CloudTrail'
         ? // TODO: Erik, why are you using requestParameters.service instead of event.detail.service?
           // [event.detail.requestParameters.service]
-          // The compiler did not like this, it expected
+          // The compiler did not like this, it expected this below
           ['ecs']
         : event.resources),
     ];
@@ -973,6 +998,7 @@ export async function handleCloudWatchEvent(
       resources.push(...(await describeEcsService(arn)));
     }
   }
+
   for (const resource of resources) {
     console.log(`Evaluating schedule for ${resource.type} ${resource.id}`);
     const action = nextAction(resource);
@@ -993,25 +1019,26 @@ interface HandlerEvent {
   };
 
   readonly Execution: {
+    // This can be Cloudwatch or Autostate event
     readonly Input: Event;
   };
 }
 
-function isCloudWatchEvent(event: any): event is CloudWatchEvent {
+function isCloudWatchEvent(event: CloudWatchEvent): event is CloudWatchEvent {
   // The Cloudwatch Event will include an input.detail field.
   return event.detail !== undefined;
 }
 
-function isAutoStateAction(event: any): event is AutoStateAction {
-  // The Cloudwatch Event will include an input.detail field.
-  return event.detail === undefined;
+function isAutoStateAction(event: AutoStateAction): event is AutoStateAction {
+  // The AutoStateAction Event will have an action field.
+  return event.action !== undefined;
 }
 
 export async function handler(event: HandlerEvent): Promise<any> {
   const stateMachineArn = event.StateMachine.Id;
   const input: Event = event.Execution.Input;
 
-  if (isCloudWatchEvent(input)) {
+  if (isCloudWatchEvent(input) && input.detail !== undefined) {
     return handleCloudWatchEvent(stateMachineArn, input);
   } else if (isAutoStateAction(input)) {
     const action = input as AutoStateAction;
