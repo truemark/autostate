@@ -798,8 +798,6 @@ interface EC2InstanceStateChangeNotification {
   };
 }
 
-// TODO: Erik this is where I added items to test how problematic
-// adding missing items would be. This is a bad idea because it defeats eslint.
 interface RDSDetail {
   readonly EventCategories: string[];
   readonly SourceType: SourceType;
@@ -878,9 +876,6 @@ interface APICallViaCloudtrail {
   readonly detail: CloudwatchAPICallDetail;
 }
 
-// TODO: Erik here's the composite type that doesn't work.
-// eslint expects items to be present. For example,
-// AutoStateAction doesn't have a property named 'detail'.
 type Event = RDSDBInstanceEvent &
   RDSDBClusterEvent &
   TagChangeOnResource &
@@ -894,7 +889,6 @@ type CloudWatchEvent = RDSDBInstanceEvent &
   EC2InstanceStateChangeNotification &
   APICallViaCloudtrail;
 
-// Custom type guard for TagChangeOnResource
 function isEC2TagChangeOnResource(
   event: TagChangeOnResource
 ): event is TagChangeOnResource {
@@ -922,7 +916,6 @@ function isEC2InstanceStateChangeNotification(
   );
 }
 
-// Custom type guard for ECS Event
 function isECSEvent(
   event: APICallViaCloudtrail
 ): event is APICallViaCloudtrail {
