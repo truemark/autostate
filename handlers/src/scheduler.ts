@@ -125,14 +125,31 @@ interface AutoStateActionResult extends AutoStateAction {
   readonly resource?: AutoStateResource;
 }
 
-function getActionName(
+function parseEcsArn(arn: string): any {
+  const arnParts = arn.split(':');
+  const [arnPrefix, aws, service, region, accountId, resource] = arnParts;
+  const [resourceType, resourceId, serviceName] = resource.split('/');
+
+  return {
+    arnPrefix,
+    aws,
+    service,
+    region,
+    accountId,
+    resourceType,
+    resourceId,
+    serviceName,
+  };
+}
+
+function getJobName(
   action: AutoStateAction,
   tags: AutoStateTags,
   hashId?: boolean
 ): string {
-  const id = hashId ? cyrb53(action.resourceId) : action.resourceId;
+  const serviceName: string = parseEcsArn(action.resourceId).serviceName;
   return (
-    `${action.resourceType}-${id}-${action.action}-` +
+    `${action.resourceType}-${serviceName}-${action.action}-` +
     `${DateTime.fromISO(action.when).toFormat('yyyy-MM-dd-HH-mm')}-${hashTagsV1(
       tags
     )}`
@@ -632,11 +649,11 @@ async function startExecution(
       new StartExecutionCommand({
         stateMachineArn,
         input,
-        name: getActionName(
+        name: getJobName(
           action,
           resource.tags,
           resource.type === 'ecs-service'
-        ),
+        ).slice(0, 80),
       })
     );
   }
@@ -649,6 +666,7 @@ export async function processStateAction(
   console.log(
     `Processing ${action.action} of ${action.resourceType} ${action.resourceId} at ${action.when}`
   );
+  // Check to see if the resource still exists. If it doesn't, exit gracefully.
   let resources = [];
   if (action.resourceType === 'ec2-instance') {
     resources = await describeEc2Instances([action.resourceId]);
@@ -665,6 +683,7 @@ export async function processStateAction(
   if (resources.length === 0) {
     return {...action, execute: false, reason: 'Instance no longer exists'};
   }
+  // Check the resource current tags hash value. If it doesn't match the initial tags hash value, exit gracefully.
   const resource = resources[0];
   const tagsHash = hashTagsV1(resource.tags);
   if (tagsHash !== action.tagHash) {
@@ -678,6 +697,7 @@ export async function processStateAction(
       resource,
     };
   }
+  // All actions to take in order to start a resource
   if (action.action === 'start') {
     await startExecution(
       stateMachineArn,
@@ -706,6 +726,7 @@ export async function processStateAction(
       };
     }
   }
+  // All actions to take in order to stop or reboot a resource
   if (action.action === 'stop' || action.action === 'reboot') {
     await startExecution(
       stateMachineArn,
@@ -736,6 +757,7 @@ export async function processStateAction(
       };
     }
   }
+  // All actions to take in order to terminate a resource
   if (action.action === 'terminate') {
     if (resource.state !== 'terminated') {
       console.log(
