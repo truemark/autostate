@@ -21,6 +21,6 @@
     "concurrently": "^8.2.2"
   },
   "dependencies": {
-    "aws-cdk-lib": "^2.76.0"
+    "aws-cdk-lib": "^2.130.0"
   }
 }

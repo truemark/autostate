@@ -245,10 +245,12 @@ function nextAction(
     ...durationActions(resource, priorAction),
   ];
   console.log(
-    `Evaluating ${actions.length} possible future actions for ${resource.type} ${resource.id}`
+    `nextAction: Evaluating ${actions.length} possible future actions for ${resource.type} ${resource.id}`
   );
   for (const action of actions) {
+    console.log(`nextAction: Evaluating action: ${JSON.stringify(action)}, selected is ${JSON.stringify(selected)}`)
     if (selected === undefined || action.when < selected.when) {
+      console.log(`nextAction: Action selected: ${JSON.stringify(action)}`)
       selected = action;
     }
   }
@@ -652,7 +654,7 @@ async function startExecution(
     console.log(
       `startExecution: <ecs?> Scheduling ${action.resourceType} ${action.resourceId} to ${action.action} at ${action.when}`
     );
-    console.log('Execution Input: ' + input);
+    console.log('startExecution: Execution Input: ' + input);
     await sfnClient.send(
       new StartExecutionCommand({
         stateMachineArn,
@@ -668,7 +670,7 @@ export async function processStateAction(
   action: AutoStateAction
 ): Promise<AutoStateActionResult | undefined> {
   console.log(
-    `Processing ${action.action} of ${action.resourceType} ${action.resourceId} at ${action.when}`
+    `processStateAction: Processing ${action.action} of ${action.resourceType} ${action.resourceId} at ${action.when}`
   );
   // Check to see if the resource still exists. If it doesn't, exit gracefully.
   let resources = [];
@@ -692,7 +694,7 @@ export async function processStateAction(
   const tagsHash = hashTagsV1(resource.tags);
   if (tagsHash !== action.tagHash) {
     console.log(
-      `${action.resourceType} ${action.resourceId} tags do not match execution, doing nothing...`
+      `processStateAction: ${action.resourceType} ${action.resourceId} tags do not match execution, doing nothing...`
     );
     return {
       ...action,
@@ -710,7 +712,7 @@ export async function processStateAction(
     );
     if (resource.state === 'stopped') {
       console.log(
-        `${action.resourceType} ${action.resourceId} is stopped, starting...`
+        `processStateAction: ${action.resourceType} ${action.resourceId} is stopped, starting...`
       );
       return {
         ...action,
@@ -720,7 +722,7 @@ export async function processStateAction(
       };
     } else {
       console.log(
-        `${action.resourceType} ${action.resourceId} is not stopped, doing nothing...`
+        `processStateAction: ${action.resourceType} ${action.resourceId} is not stopped, doing nothing...`
       );
       return {
         ...action,
@@ -739,7 +741,7 @@ export async function processStateAction(
     );
     if (resource.state === 'running') {
       console.log(
-        `${action.resourceType} ${action.resourceId} is running, ${
+        `processStateAction: ${action.resourceType} ${action.resourceId} is running, ${
           action.action === 'stop' ? 'stopping' : 'rebooting'
         }...`
       );
@@ -751,7 +753,7 @@ export async function processStateAction(
       };
     } else {
       console.log(
-        `${action.resourceType} ${action.resourceId} is not running, doing nothing...`
+        `processStateAction: ${action.resourceType} ${action.resourceId} is not running, doing nothing...`
       );
       return {
         ...action,
@@ -765,7 +767,7 @@ export async function processStateAction(
   if (action.action === 'terminate') {
     if (resource.state !== 'terminated') {
       console.log(
-        `${action.resourceType} ${action.resourceId} is not terminated, terminating...`
+        `processStateAction: ${action.resourceType} ${action.resourceId} is not terminated, terminating...`
       );
       return {
         ...action,
@@ -775,7 +777,7 @@ export async function processStateAction(
       };
     } else {
       console.log(
-        `${action.resourceType} ${action.resourceId} is already terminated, doing nothing...`
+        `processStateAction: ${action.resourceType} ${action.resourceId} is already terminated, doing nothing...`
       );
       return {
         ...action,
@@ -970,7 +972,7 @@ export async function handleCloudWatchEvent(
   stateMachineArn: string,
   event: Event
 ): Promise<void> {
-  console.log(`Processing CloudWatch event ${JSON.stringify(event)}`);
+  console.log(`handleCloudWatchEvent: Processing CloudWatch event ${JSON.stringify(event)}`);
   const resources: AutoStateResource[] = [];
 
   if (
@@ -980,14 +982,14 @@ export async function handleCloudWatchEvent(
   ) {
     for (const resourceArn of event.resources) {
       const resourceId = arnparser.parse(resourceArn).resource;
-      console.log(`Processing RDS resource ${resourceId}`);
+      console.log(`handleCloudWatchEvent: Processing RDS resource ${resourceId}`);
       resources.push(
         ...(resourceId.startsWith('db:')
           ? await describeRdsInstances(resourceId.replace('db:', ''))
           : await describeRdsClusters(resourceId.replace('cluster:', '')))
       );
     }
-    console.log(`RDS resources: ${JSON.stringify(resources)}`);
+    console.log(`handleCloudWatchEvent: RDS resources: ${JSON.stringify(resources)}`);
     // } else if ( // TODO: Erik, this does not work. A new if does. Why? In theory it will still work.
     // The error is " error TS2339: Property 'resources' does not exist on type 'never'."
   }
@@ -995,7 +997,7 @@ export async function handleCloudWatchEvent(
     isEC2TagChangeOnResource(event) ||
     isEC2InstanceStateChangeNotification(event)
   ) {
-    console.log(`Processing EC2 resource ${event.detail['instance-id']}`);
+    console.log(`handleCloudWatchEvent: Processing EC2 resource ${event.resources}`);
     resources.push(
       ...(await describeEc2Instances(
         event.resources.map(arn =>
@@ -1003,11 +1005,11 @@ export async function handleCloudWatchEvent(
         )
       ))
     );
-    console.log(`EC2 resources: ${JSON.stringify(resources)}`);
+    console.log(`handleCloudWatchEvent: EC2 resources: ${JSON.stringify(resources)}`);
     // } else if ( // TODO: Erik, this does not work. A new if does. Why? In theory a new if will still work.
   }
   if (isECSTagChangeOnResource(event) || isECSEvent(event)) {
-    console.log(`Processing ECS resource ${JSON.stringify(event)}`);
+    console.log(`handleCloudWatchEvent: Processing ECS resource ${JSON.stringify(event)}`);
     const arns = [
       ...(event['detail-type'] === 'AWS API Call via CloudTrail'
         ? // TODO: Erik, why are you using requestParameters.service instead of event.detail.service?
@@ -1019,19 +1021,19 @@ export async function handleCloudWatchEvent(
     for (const arn of arns) {
       resources.push(...(await describeEcsService(arn)));
     }
-    console.log(`ECS resources: ${JSON.stringify(resources)}`);
+    console.log(`handleCloudWatchEvent: ECS resources: ${JSON.stringify(resources)}`);
   }
 
   for (const resource of resources) {
-    console.log(`Evaluating schedule for ${resource.type} ${resource.id}`);
+    console.log(`handleCloudWatchEvent: Evaluating schedule for ${resource.type} ${resource.id}`);
     const action = nextAction(resource);
     if (action) {
       console.log(
-        `Next action will ${action.action} ${resource.type} ${resource.id} at ${action.when}`
+        `handleCloudWatchEvent: Next action will ${action.action} ${resource.type} ${resource.id} at ${action.when}`
       );
       await startExecution(stateMachineArn, resource, action);
     } else {
-      console.log(`No action scheduled for ${resource.type} ${resource.id}`);
+      console.log(`handleCloudWatchEvent: No action scheduled for ${resource.type} ${resource.id}`);
     }
   }
 }
@@ -1073,7 +1075,7 @@ export async function handler(event: HandlerEvent): Promise<any> {
     ) {
       return processStateAction(stateMachineArn, action);
     } else {
-      throw new Error(`Unsupported resource type ${action.resourceType}`);
+      throw new Error(`handler: Unsupported resource type ${action.resourceType}`);
     }
   }
 }
