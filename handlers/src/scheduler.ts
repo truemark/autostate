@@ -115,8 +115,6 @@ interface AutoStateAction {
   readonly tagHash: string;
   readonly when: string;
   readonly action: Action;
-  // readonly detail?: {service: string; requestParameters: string};
-  // readonly resources?: [key: string];
 }
 
 interface AutoStateActionResult extends AutoStateAction {
@@ -142,18 +140,28 @@ function parseEcsArn(arn: string): any {
   };
 }
 
-function getJobName(
-  action: AutoStateAction,
-  tags: AutoStateTags,
-  hashId?: boolean
-): string {
-  const serviceName: string = parseEcsArn(action.resourceId).serviceName;
-  return (
-    `${action.resourceType}-${serviceName}-${action.action}-` +
-    `${DateTime.fromISO(action.when).toFormat('yyyy-MM-dd-HH-mm')}-${hashTagsV1(
-      tags
-    )}`
-  );
+function getJobName(action: AutoStateAction, tags: AutoStateTags): string {
+  // An ECS service has 8 parts in its ARN (addition of the service name).
+  // RDS and EC2 services have 7 parts in their ARN. Parse correctly to return a descriptive job name.
+  if (action.resourceType === 'ecs-service') {
+    const serviceName: string = parseEcsArn(action.resourceId).serviceName;
+    console.log(`getJobName: ecs service name is: ${serviceName}`);
+
+    return (
+      `${action.resourceType}-${serviceName}-${action.action}-` +
+      `${DateTime.fromISO(action.when).toFormat(
+        'yyyy-MM-dd-HH-mm'
+      )}-${hashTagsV1(tags)}`
+    );
+  } else {
+    // no additional parsing needed here.
+    return (
+      `${action.resourceType}-${action.resourceId}-${action.action}-` +
+      `${DateTime.fromISO(action.when).toFormat(
+        'yyyy-MM-dd-HH-mm'
+      )}-${hashTagsV1(tags)}`
+    );
+  }
 }
 
 function optionalNumber(value: string | undefined): number | undefined {
@@ -642,18 +650,14 @@ async function startExecution(
   if (action) {
     const input = JSON.stringify(action);
     console.log(
-      `Scheduling ${action.resourceType} ${action.resourceId} to ${action.action} at ${action.when}`
+      `startExecution: <ecs?> Scheduling ${action.resourceType} ${action.resourceId} to ${action.action} at ${action.when}`
     );
     console.log('Execution Input: ' + input);
     await sfnClient.send(
       new StartExecutionCommand({
         stateMachineArn,
         input,
-        name: getJobName(
-          action,
-          resource.tags,
-          resource.type === 'ecs-service'
-        ).slice(0, 80),
+        name: getJobName(action, resource.tags).slice(0, 80),
       })
     );
   }
@@ -976,13 +980,14 @@ export async function handleCloudWatchEvent(
   ) {
     for (const resourceArn of event.resources) {
       const resourceId = arnparser.parse(resourceArn).resource;
+      console.log(`Processing RDS resource ${resourceId}`);
       resources.push(
         ...(resourceId.startsWith('db:')
           ? await describeRdsInstances(resourceId.replace('db:', ''))
           : await describeRdsClusters(resourceId.replace('cluster:', '')))
       );
     }
-
+    console.log(`RDS resources: ${JSON.stringify(resources)}`);
     // } else if ( // TODO: Erik, this does not work. A new if does. Why? In theory it will still work.
     // The error is " error TS2339: Property 'resources' does not exist on type 'never'."
   }
@@ -990,6 +995,7 @@ export async function handleCloudWatchEvent(
     isEC2TagChangeOnResource(event) ||
     isEC2InstanceStateChangeNotification(event)
   ) {
+    console.log(`Processing EC2 resource ${event.detail['instance-id']}`);
     resources.push(
       ...(await describeEc2Instances(
         event.resources.map(arn =>
@@ -997,10 +1003,11 @@ export async function handleCloudWatchEvent(
         )
       ))
     );
-
+    console.log(`EC2 resources: ${JSON.stringify(resources)}`);
     // } else if ( // TODO: Erik, this does not work. A new if does. Why? In theory a new if will still work.
   }
   if (isECSTagChangeOnResource(event) || isECSEvent(event)) {
+    console.log(`Processing ECS resource ${JSON.stringify(event)}`);
     const arns = [
       ...(event['detail-type'] === 'AWS API Call via CloudTrail'
         ? // TODO: Erik, why are you using requestParameters.service instead of event.detail.service?
@@ -1012,6 +1019,7 @@ export async function handleCloudWatchEvent(
     for (const arn of arns) {
       resources.push(...(await describeEcsService(arn)));
     }
+    console.log(`ECS resources: ${JSON.stringify(resources)}`);
   }
 
   for (const resource of resources) {
