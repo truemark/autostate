@@ -1,8 +1,13 @@
 *.js
 !jest.config.js
 *.d.ts
+*.js.map
 node_modules
 notes.txt
+
+
+# macos garbage
+.DS_Store
 
 # CDK asset staging directory
 .cdk.staging
