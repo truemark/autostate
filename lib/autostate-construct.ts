@@ -12,7 +12,7 @@ import {
   StateMachineType,
   Wait,
   WaitTime,
-  Map as SfnMap
+  Map as SfnMap, DefinitionBody
 } from "aws-cdk-lib/aws-stepfunctions"
 import {CallAwsService, LambdaInvoke} from "aws-cdk-lib/aws-stepfunctions-tasks"
 import {SfnStateMachine} from "aws-cdk-lib/aws-events-targets"
@@ -217,7 +217,7 @@ export class AutoState extends Construct {
     const deleteRdsClusterInstances = new SfnMap(this, "DeleteRdsInstances", {
       itemsPath: "$.resource.instanceIds",
       resultPath: "$.result"
-    }).iterator(deleteRdsClusterInstance).next(deleteRdsCluster);
+    }).itemProcessor((deleteRdsClusterInstance).next(deleteRdsCluster));
 
     const doNothing = new Pass(this, "DoNothing");
 
@@ -309,7 +309,7 @@ export class AutoState extends Construct {
     }));
 
     const stateMachine = new StateMachine(this, "Default", {
-      definition: addExecutionContext.next(eventRouter),
+      definitionBody: DefinitionBody.fromChainable(addExecutionContext.next(eventRouter)),
       stateMachineType: StateMachineType.STANDARD,
       removalPolicy: RemovalPolicy.DESTROY,
     });
