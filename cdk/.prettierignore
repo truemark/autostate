@@ -3,9 +3,11 @@ cdk.out
 node_modules
 handlers
 lib/*.js
-lib/*.d.ts
+lib/*.d.*
+lib/*.map
 bin/*.js
-bin/*.d.ts
+bin/*.d.*
+bin/*.map
 test/*.js
-test/*.d.ts
-*.map
+test/*.d.*
+test/*.map

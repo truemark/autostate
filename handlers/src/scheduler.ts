@@ -248,9 +248,13 @@ function nextAction(
     `nextAction: Evaluating ${actions.length} possible future actions for ${resource.type} ${resource.id}`
   );
   for (const action of actions) {
-    console.log(`nextAction: Evaluating action: ${JSON.stringify(action)}, selected is ${JSON.stringify(selected)}`)
+    console.log(
+      `nextAction: Evaluating action: ${JSON.stringify(
+        action
+      )}, selected is ${JSON.stringify(selected)}`
+    );
     if (selected === undefined || action.when < selected.when) {
-      console.log(`nextAction: Action selected: ${JSON.stringify(action)}`)
+      console.log(`nextAction: Action selected: ${JSON.stringify(action)}`);
       selected = action;
     }
   }
@@ -741,9 +745,9 @@ export async function processStateAction(
     );
     if (resource.state === 'running') {
       console.log(
-        `processStateAction: ${action.resourceType} ${action.resourceId} is running, ${
-          action.action === 'stop' ? 'stopping' : 'rebooting'
-        }...`
+        `processStateAction: ${action.resourceType} ${
+          action.resourceId
+        } is running, ${action.action === 'stop' ? 'stopping' : 'rebooting'}...`
       );
       return {
         ...action,
@@ -972,7 +976,11 @@ export async function handleCloudWatchEvent(
   stateMachineArn: string,
   event: Event
 ): Promise<void> {
-  console.log(`handleCloudWatchEvent: Processing CloudWatch event ${JSON.stringify(event)}`);
+  console.log(
+    `handleCloudWatchEvent: Processing CloudWatch event ${JSON.stringify(
+      event
+    )}`
+  );
   const resources: AutoStateResource[] = [];
 
   if (
@@ -982,14 +990,18 @@ export async function handleCloudWatchEvent(
   ) {
     for (const resourceArn of event.resources) {
       const resourceId = arnparser.parse(resourceArn).resource;
-      console.log(`handleCloudWatchEvent: Processing RDS resource ${resourceId}`);
+      console.log(
+        `handleCloudWatchEvent: Processing RDS resource ${resourceId}`
+      );
       resources.push(
         ...(resourceId.startsWith('db:')
           ? await describeRdsInstances(resourceId.replace('db:', ''))
           : await describeRdsClusters(resourceId.replace('cluster:', '')))
       );
     }
-    console.log(`handleCloudWatchEvent: RDS resources: ${JSON.stringify(resources)}`);
+    console.log(
+      `handleCloudWatchEvent: RDS resources: ${JSON.stringify(resources)}`
+    );
     // } else if ( // TODO: Erik, this does not work. A new if does. Why? In theory it will still work.
     // The error is " error TS2339: Property 'resources' does not exist on type 'never'."
   }
@@ -997,7 +1009,9 @@ export async function handleCloudWatchEvent(
     isEC2TagChangeOnResource(event) ||
     isEC2InstanceStateChangeNotification(event)
   ) {
-    console.log(`handleCloudWatchEvent: Processing EC2 resource ${event.resources}`);
+    console.log(
+      `handleCloudWatchEvent: Processing EC2 resource ${event.resources}`
+    );
     resources.push(
       ...(await describeEc2Instances(
         event.resources.map(arn =>
@@ -1005,11 +1019,15 @@ export async function handleCloudWatchEvent(
         )
       ))
     );
-    console.log(`handleCloudWatchEvent: EC2 resources: ${JSON.stringify(resources)}`);
+    console.log(
+      `handleCloudWatchEvent: EC2 resources: ${JSON.stringify(resources)}`
+    );
     // } else if ( // TODO: Erik, this does not work. A new if does. Why? In theory a new if will still work.
   }
   if (isECSTagChangeOnResource(event) || isECSEvent(event)) {
-    console.log(`handleCloudWatchEvent: Processing ECS resource ${JSON.stringify(event)}`);
+    console.log(
+      `handleCloudWatchEvent: Processing ECS resource ${JSON.stringify(event)}`
+    );
     const arns = [
       ...(event['detail-type'] === 'AWS API Call via CloudTrail'
         ? // TODO: Erik, why are you using requestParameters.service instead of event.detail.service?
@@ -1021,11 +1039,15 @@ export async function handleCloudWatchEvent(
     for (const arn of arns) {
       resources.push(...(await describeEcsService(arn)));
     }
-    console.log(`handleCloudWatchEvent: ECS resources: ${JSON.stringify(resources)}`);
+    console.log(
+      `handleCloudWatchEvent: ECS resources: ${JSON.stringify(resources)}`
+    );
   }
 
   for (const resource of resources) {
-    console.log(`handleCloudWatchEvent: Evaluating schedule for ${resource.type} ${resource.id}`);
+    console.log(
+      `handleCloudWatchEvent: Evaluating schedule for ${resource.type} ${resource.id}`
+    );
     const action = nextAction(resource);
     if (action) {
       console.log(
@@ -1033,7 +1055,9 @@ export async function handleCloudWatchEvent(
       );
       await startExecution(stateMachineArn, resource, action);
     } else {
-      console.log(`handleCloudWatchEvent: No action scheduled for ${resource.type} ${resource.id}`);
+      console.log(
+        `handleCloudWatchEvent: No action scheduled for ${resource.type} ${resource.id}`
+      );
     }
   }
 }
@@ -1075,7 +1099,9 @@ export async function handler(event: HandlerEvent): Promise<any> {
     ) {
       return processStateAction(stateMachineArn, action);
     } else {
-      throw new Error(`handler: Unsupported resource type ${action.resourceType}`);
+      throw new Error(
+        `handler: Unsupported resource type ${action.resourceType}`
+      );
     }
   }
 }
