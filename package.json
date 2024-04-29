@@ -15,12 +15,11 @@
     "watch-handlers": "cd handlers && pnpm run watch",
     "watch-cdk": "cd cdk && cdk watch Funding/Api",
     "watch": "concurrently \"pnpm:watch-handlers\" \"pnpm:watch-cdk\" -c red,green",
+    "deploy-cdk": "concurrently \"pnpm:build-handlers\" \"pnpm:build-cdk\" -c blue,green && cd cdk && cdk deploy --require-approval never",
     "lint": "gts lint"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
-  },
-  "dependencies": {
-    "aws-cdk-lib": "^2.130.0"
+    "concurrently": "^8.2.2",
+    "aws-cdk-lib": "^2.139.0"
   }
 }
