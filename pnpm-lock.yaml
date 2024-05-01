@@ -8,6 +8,9 @@ importers:
 
   .:
     devDependencies:
+      aws-cdk:
+        specifier: ^2.139.0
+        version: 2.139.1
       aws-cdk-lib:
         specifier: ^2.139.0
         version: 2.139.0(constructs@10.3.0)
@@ -56,6 +59,11 @@ packages:
       - yaml
       - mime-types
 
+  aws-cdk@2.139.1:
+    resolution: {integrity: sha512-EKnhoF02puYbZFKmj3oZrzOKIi3nplH6pOfg0h0ICUBBg5wY45C8nDqTUm34YGcgQS42mLywnPn4BW9HO7aKWw==}
+    engines: {node: '>= 14.15.0'}
+    hasBin: true
+
   chalk@4.1.2:
     resolution: {integrity: sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA==}
     engines: {node: '>=10'}
@@ -90,6 +98,11 @@ packages:
   escalade@3.1.2:
     resolution: {integrity: sha512-ErCHMCae19vR8vQGe50xIsVomy19rg6gFu3+r3jkEO46suLMWBksvVyoGgQV+jOfl84ZSOSlmv6Gxa89PmTGmA==}
     engines: {node: '>=6'}
+
+  fsevents@2.3.2:
+    resolution: {integrity: sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==}
+    engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
+    os: [darwin]
 
   get-caller-file@2.0.5:
     resolution: {integrity: sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg==}
@@ -186,6 +199,10 @@ snapshots:
       '@aws-cdk/asset-node-proxy-agent-v6': 2.0.3
       constructs: 10.3.0
 
+  aws-cdk@2.139.1:
+    optionalDependencies:
+      fsevents: 2.3.2
+
   chalk@4.1.2:
     dependencies:
       ansi-styles: 4.3.0
@@ -224,6 +241,9 @@ snapshots:
   emoji-regex@8.0.0: {}
 
   escalade@3.1.2: {}
+
+  fsevents@2.3.2:
+    optional: true
 
   get-caller-file@2.0.5: {}
 
