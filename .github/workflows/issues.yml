@@ -1,0 +1,11 @@
+on:
+  pull_request:
+  issues:
+    types:
+      - opened
+jobs:
+  add-to-project:
+    name: Add issue to project
+    uses: truemark/github-workflows/.github/workflows/issues.yml@main
+    secrets:
+      add_to_project_pat: ${{ secrets.ADD_TO_PROJECT_PAT }}
