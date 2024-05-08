@@ -8,4 +8,5 @@ jobs:
     name: Add issue to project
     uses: truemark/github-workflows/.github/workflows/issues.yml@main
     secrets:
-      add_to_project_pat: ${{ secrets.ADD_TO_PROJECT_PAT }}
+      private-key: ${{ secrets.ISSUES_BOT_KEY }}
+      app-id: ${{ secrets.ISSUES_BOT_ID }}
