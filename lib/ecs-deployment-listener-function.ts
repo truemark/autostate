@@ -20,7 +20,7 @@ export class EcsDeploymentListenerFunction extends NodejsFunction {
       memorySize: 512,
       timeout: Duration.seconds(120),
       logRetention: RetentionDays.ONE_MONTH,
-      entry: path.join(__dirname, "..", "handlers", "src", "ecs-deployment.ts"),
+      entry: path.join(__dirname, "..", "handlers", "src", "ecs-deployment-tracker.ts"),
       handler: "handler",
       environment: {
         TAG_PREFIX: props.tagPrefix
@@ -35,10 +35,9 @@ export class EcsDeploymentListenerFunction extends NodejsFunction {
     const rule = new Rule(this.stack, 'EcsDeploymentSuccessRule', {
     eventPattern: {
       source: ['aws.ecs'],
-        detailType: ['ECS Service Action'],
-        detail: {
-        eventName: ['SERVICE_STEADY_STATE'],
-          desiredStatus: ['RUNNING']
+      detailType: ['ECS Deployment State Change'],
+      detail: {
+        "eventName": ["SERVICE_DEPLOYMENT_COMPLETED"],
       }
     }
   });
