@@ -18,11 +18,11 @@
     "postinstall": "cd handlers && pnpm i --frozen-lockfile"
   },
   "devDependencies": {
-    "@types/jest": "^29.4.0",
+    "@types/jest": "^29.5.12",
     "@types/node": "18.14.6",
     "aws-cdk": "2.135.0",
     "esbuild": "^0.20.2",
-    "jest": "^29.5.0",
+    "jest": "^29.7.0",
     "ts-jest": "^29.0.5",
     "ts-node": "^10.9.1",
     "typescript": "~4.9.5"
