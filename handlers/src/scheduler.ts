@@ -609,9 +609,7 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
     for (const arn of serviceArnList) {
       resources.push(...await describeEcsService(arn));
     }
-
-    console.log('### All resources:', JSON.stringify(resources));
-
+    console.log('Done Reading ECS service tags and will apply the existing tag value if required');
   }
 
   for (const resource of resources) {

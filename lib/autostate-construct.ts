@@ -303,6 +303,10 @@ export class AutoState extends Construct {
       Condition.stringEquals("$.Execution.Input.detail-type", "AWS API Call via CloudTrail"),
       Condition.stringEquals("$.Execution.Input.source", "aws.ecs"),
     ), eventProcessor);
+    eventRouter.when(Condition.and(
+      Condition.stringEquals("$.Execution.Input.detail-type", "ECS Deployment State Change"),
+      Condition.stringEquals("$.Execution.Input.source", "aws.ecs"),
+    ), eventProcessor);
     eventRouter.otherwise(new Fail(this, "UnknownEvent", {
       cause: "Unknown event type",
     }));
@@ -383,5 +387,16 @@ export class AutoState extends Construct {
       }
     });
     ecsStartRule.addTarget(new SfnStateMachine(stateMachine, {deadLetterQueue}));
+
+    const ecsDeploymentCompletionRule = new Rule(this, "EcsDeploymentCompletionRule", {
+      eventPattern: {
+        source: ['aws.ecs'],
+        detailType: ['ECS Deployment State Change'],
+        detail: {
+          "eventName": ["SERVICE_DEPLOYMENT_COMPLETED"],
+        }
+      }
+    });
+    ecsDeploymentCompletionRule.addTarget(new SfnStateMachine(stateMachine, {deadLetterQueue}));
   }
 }
