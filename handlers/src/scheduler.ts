@@ -603,7 +603,17 @@ export async function handleCloudWatchEvent(stateMachineArn: string, event: any)
     for (const arn of arns) {
       resources.push(...await describeEcsService(arn));
     }
+  } else if (event["detail-type"] === "ECS Deployment State Change" && event["source"]  === "aws.ecs"
+    && event.detail.eventName === "SERVICE_DEPLOYMENT_COMPLETED") {
+    const serviceArnList: string[] = event.resources;
+    for (const arn of serviceArnList) {
+      resources.push(...await describeEcsService(arn));
+    }
+
+    console.log('### All resources:', JSON.stringify(resources));
+
   }
+
   for (const resource of resources) {
     console.log(`Evaluating schedule for ${resource.type} ${resource.id}`);
     const action = nextAction(resource);

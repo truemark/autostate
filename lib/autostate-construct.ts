@@ -16,7 +16,6 @@ import {
 } from "aws-cdk-lib/aws-stepfunctions"
 import {CallAwsService, LambdaInvoke} from "aws-cdk-lib/aws-stepfunctions-tasks"
 import {SfnStateMachine} from "aws-cdk-lib/aws-events-targets"
-import {EcsDeploymentListenerFunction} from "./ecs-deployment-listener-function";
 
 export interface AutoStateProps {
   readonly tagPrefix?: string;
@@ -27,9 +26,6 @@ export class AutoState extends Construct {
     super(scope, id);
 
     const tagPrefix = props.tagPrefix ?? "autostate:";
-
-    new EcsDeploymentListenerFunction(this, "EcsDeploymentListenerFunction", {tagPrefix});
-
     const schedulerFunction = new SchedulerFunction(this, "SchedulerFunction", {tagPrefix});
 
     const addExecutionContext = new Pass(this, "AddExecutionContext", {
