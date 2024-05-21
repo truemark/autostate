@@ -540,6 +540,18 @@ export async function processStateAction(stateMachineArn: string, action: AutoSt
     }
   }
   if (action.action === "stop" || action.action === "reboot") {
+    // When max-runtime is used we must check the previous start time to ensure we should be proceeding
+    if (resource.tags.maxRuntime && resource.state === "running") {
+      const when = calculateWhen(resource.startTime, Number(resource.tags.maxRuntime)).toISOString();
+      if (action.when !== when) {
+        return {
+          ...action,
+          execute: false,
+          reason: "Start time does not match",
+          resource
+        }
+      }
+    }
     await startExecution(stateMachineArn, resource, nextAction(resource, action));
     if (resource.state === "running") {
       console.log(`${action.resourceType} ${action.resourceId} is running, ${action.action === "stop" ? "stopping" : "rebooting"}...`);
