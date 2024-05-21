@@ -1,6 +1,7 @@
 *.js
 !jest.config.js
-*.d.ts
+*.d.*
+*.map
 node_modules
 notes.txt
 
