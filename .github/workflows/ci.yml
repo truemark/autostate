@@ -1,0 +1,12 @@
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  workflow_dispatch:
+name: ci
+jobs:
+  ci:
+    uses: truemark/github-workflows/.github/workflows/javascript-library-build.yml@main
+    with:
+      node-versions: "[18,20,22]"
