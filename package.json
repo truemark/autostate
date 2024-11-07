@@ -1,35 +1,30 @@
 {
   "name": "autostate",
-  "version": "0.1.0",
   "description": "An AWS CDK project that automatically starts, stops, reboots and terminates resources through tags.",
-  "homepage": "https://github.com/truemark/autostate",
+  "version": "1.2.0-alpha.1",
   "repository": {
     "type": "git",
     "url": "git@github.com:truemark/autostate.git"
   },
-  "bin": {
-    "autostate": "bin/autostate.js"
-  },
   "scripts": {
-    "build": "tsc",
-    "watch": "tsc -w",
-    "test": "jest",
-    "cdk": "cdk",
-    "postinstall": "cd handlers && pnpm i --frozen-lockfile"
+    "install-handlers": "cd handlers && pnpm i --frozen-lockfile",
+    "install-cdk": "cd cdk && pnpm i --frozen-lockfile",
+    "install-all": "concurrently \"pnpm:install-handlers\" \"pnpm:install-cdk\" -c blue,green",
+    "postinstall": "pnpm run install-all",
+    "build-handlers": "cd handlers && pnpm run build",
+    "build-cdk": "cd cdk && pnpm run build",
+    "build": "concurrently \"pnpm:build-handlers\" \"pnpm:build-cdk\" -c blue,green",
+    "test-handlers": "cd handlers && pnpm run test",
+    "test-cdk": "cd cdk && pnpm run test",
+    "test": "concurrently \"pnpm:test-handlers\" \"pnpm:test-cdk\" -c blue,green",
+    "fmt-handlers": "cd handlers && pnpm run fmt",
+    "fmt-cdk": "cd cdk && pnpm run fmt",
+    "fmt": "concurrently \"pnpm:fmt-handlers\" \"pnpm:fmt-cdk\" -c blue,green",
+    "watch-handlers": "cd handlers && pnpm run watch",
+    "watch-cdk": "cd cdk && cdk watch AutoDump",
+    "watch": "concurrently \"pnpm:watch-handlers\" \"pnpm:watch-cdk\" -c red,green"
   },
   "devDependencies": {
-    "@types/jest": "^29.4.0",
-    "@types/node": "18.14.6",
-    "aws-cdk": "2.135.0",
-    "esbuild": "^0.20.2",
-    "jest": "^29.5.0",
-    "ts-jest": "^29.0.5",
-    "ts-node": "^10.9.1",
-    "typescript": "~4.9.5"
-  },
-  "dependencies": {
-    "aws-cdk-lib": "^2.135.0",
-    "constructs": "^10.0.0",
-    "source-map-support": "^0.5.21"
+    "concurrently": "^9.1.0"
   }
 }

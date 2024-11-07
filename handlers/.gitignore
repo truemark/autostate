@@ -1,0 +1,8 @@
+node_modules
+*.js
+*.d.*
+*.map
+*.mjs
+!prettier.config.mjs
+!eslint.config.mjs
+coverage

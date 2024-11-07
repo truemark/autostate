@@ -1,0 +1,10 @@
+*.js
+!.prettierrc.js
+!jest.config.js
+*.d.*
+*.map
+node_modules
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
