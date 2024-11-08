@@ -1,7 +1,7 @@
 {
   "name": "autostate",
   "description": "An AWS CDK project that automatically starts, stops, reboots and terminates resources through tags.",
-  "version": "1.2.0-alpha.2",
+  "version": "1.2.0",
   "repository": {
     "type": "git",
     "url": "git@github.com:truemark/autostate.git"
