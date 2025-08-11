@@ -107,35 +107,24 @@ export class AutoState extends Construct {
       },
     );
 
-    const stopSageMakerInstance = new CallAwsService(
+    function makeStopNotebookTask(scope: Construct, id: string) {
+      return new CallAwsService(scope, id, {
+        service: 'sagemaker',
+        action: 'stopNotebookInstance',
+        parameters: {NotebookInstanceName: JsonPath.stringAt('$.resource.id')},
+        iamAction: 'sagemaker:StopNotebookInstance',
+        iamResources: ['*'],
+        resultPath: '$.result',
+      });
+    }
+
+    const stopSageMakerInstance = makeStopNotebookTask(
       this,
       'StopSageMakerNotebook',
-      {
-        service: 'sagemaker',
-        action: 'stopNotebookInstance',
-        parameters: {
-          NotebookInstanceName: JsonPath.stringAt('$.resource.id'),
-        },
-        iamAction: 'sagemaker:StopNotebookInstance',
-        iamResources: ['*'],
-        resultPath: '$.result',
-      },
     );
-
-    // Separate stop task used only in the terminate path (to avoid reusing a Task that has different .next chains)
-    const stopSageMakerForTerminate = new CallAwsService(
+    const stopSageMakerForTerminate = makeStopNotebookTask(
       this,
       'StopSageMakerNotebookForTerminate',
-      {
-        service: 'sagemaker',
-        action: 'stopNotebookInstance',
-        parameters: {
-          NotebookInstanceName: JsonPath.stringAt('$.resource.id'),
-        },
-        iamAction: 'sagemaker:StopNotebookInstance',
-        iamResources: ['*'],
-        resultPath: '$.result',
-      },
     );
 
     const ignoreSageMakerStopErrors = new Pass(
