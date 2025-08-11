@@ -7,6 +7,13 @@ import {
   Instance,
   Tag,
 } from '@aws-sdk/client-ec2';
+import {
+  SageMakerClient,
+  DescribeNotebookInstanceCommand,
+  ListTagsCommand,
+  NotebookInstanceStatus,
+  Tag as SmTag,
+} from '@aws-sdk/client-sagemaker';
 import {SFNClient, StartExecutionCommand} from '@aws-sdk/client-sfn';
 import {DateTime} from 'luxon';
 import {
@@ -26,6 +33,7 @@ import {
 } from '@aws-sdk/client-ecs';
 
 const ec2Client = new EC2Client({});
+const sagemakerClient = new SageMakerClient({});
 const rdsClient = new RDSClient({});
 const sfnClient = new SFNClient({});
 const ecsClient = new ECSClient({});
@@ -34,7 +42,8 @@ type ResourceType =
   | 'ec2-instance'
   | 'rds-instance'
   | 'rds-cluster'
-  | 'ecs-service';
+  | 'ecs-service'
+  | 'sagemaker-notebook';
 type Action = 'start' | 'stop' | 'reboot' | 'terminate';
 type State = 'stopped' | 'running' | 'terminated' | 'other';
 
@@ -43,6 +52,7 @@ interface AutoStateTags {
   readonly startSchedule?: string;
   readonly stopSchedule?: string;
   readonly rebootSchedule?: string;
+  readonly terminateSchedule?: string;
   readonly maxRuntime?: string;
   readonly maxLifetime?: string;
   readonly desiredCount?: number;
@@ -188,12 +198,26 @@ function cronActions(resource: AutoStateResource): AutoStateAction[] {
       actions.push(stop);
     }
   }
-  // ECS services don't support reboot
-  if (resource.type !== 'ecs-service' && resource.tags.rebootSchedule) {
+  // ECS & SageMaker services don't support reboot
+  if (
+    resource.type !== 'ecs-service' &&
+    resource.type !== 'sagemaker-notebook' &&
+    resource.tags.rebootSchedule
+  ) {
     const reboot = cronAction(resource, 'reboot', resource.tags.rebootSchedule);
     if (reboot) {
       actions.push(reboot);
     }
+  }
+
+  // Terminate schedule (not for ECS)
+  if (resource.type !== 'ecs-service' && resource.tags.terminateSchedule) {
+    const a = cronAction(
+      resource,
+      'terminate',
+      resource.tags.terminateSchedule,
+    );
+    if (a) actions.push(a);
   }
   return actions;
 }
@@ -359,6 +383,83 @@ async function describeEc2Instances(
     }
   }
   return resources;
+}
+
+function getSagemakerTags(tags?: SmTag[]): AutoStateTags {
+  if (!tags) return {};
+  const auto = tags.reduce((acc, t) => {
+    if (
+      t.Key === 'autostate:stop-schedule' ||
+      t.Key === 'autostate:start-schedule' ||
+      t.Key === 'autostate:terminate-schedule' ||
+      t.Key === 'autostate:max-runtime' ||
+      t.Key === 'autostate:max-lifetime' ||
+      t.Key === 'autostate:timezone'
+    ) {
+      // @ts-ignore
+      acc[toCamelCase(t.Key.replace('autostate:', ''))] = (
+        t.Value ?? ''
+      ).trim();
+    }
+    return acc;
+  }, {} as AutoStateTags);
+  return auto;
+}
+
+async function describeSagemakerNotebook(
+  notebookArnOrName: string,
+): Promise<AutoStateResource[]> {
+  // Accept either ARN or name; if ARN, extract name (arn:...:notebook-instance/<name>)
+  const name = notebookArnOrName.includes(':')
+    ? arnparser.parse(notebookArnOrName).resource.split('/')[1]
+    : notebookArnOrName;
+
+  const out = await sagemakerClient.send(
+    new DescribeNotebookInstanceCommand({
+      NotebookInstanceName: name,
+    }),
+  );
+
+  // Fetch tags
+  const tagsOut = await sagemakerClient.send(
+    new ListTagsCommand({
+      ResourceArn: out.NotebookInstanceArn!,
+    }),
+  );
+
+  // Map state
+  let state: State = 'other';
+  if (out.NotebookInstanceStatus === NotebookInstanceStatus.InService)
+    state = 'running';
+  else if (
+    out.NotebookInstanceStatus === NotebookInstanceStatus.Stopped ||
+    out.NotebookInstanceStatus === NotebookInstanceStatus.Stopping
+  )
+    state = 'stopped';
+  else if (
+    out.NotebookInstanceStatus === NotebookInstanceStatus.Deleting ||
+    out.NotebookInstanceStatus === NotebookInstanceStatus.Failed
+  )
+    state = 'terminated';
+
+  const tags = getSagemakerTags(tagsOut.Tags);
+  const tagsHash = hashTagsV1(tags);
+
+  // We don’t get a precise “start time”; use LastModifiedTime as a decent proxy for “last became active”
+  const start = out.LastModifiedTime ?? out.CreationTime ?? new Date();
+  const create = out.CreationTime ?? new Date();
+
+  return [
+    {
+      type: 'sagemaker-notebook',
+      id: name,
+      tags,
+      tagsHash,
+      state,
+      startTime: start.toISOString(),
+      createTime: create.toISOString(),
+    },
+  ];
 }
 
 async function getRdsStartTime(
@@ -667,6 +768,9 @@ export async function processStateAction(
   if (action.resourceType === 'ec2-instance') {
     resources = await describeEc2Instances([action.resourceId]);
   }
+  if (action.resourceType === 'sagemaker-notebook') {
+    resources = await describeSagemakerNotebook(action.resourceId);
+  }
   if (action.resourceType === 'rds-instance') {
     resources = await describeRdsInstances(action.resourceId);
   }
@@ -812,6 +916,24 @@ export async function handleCloudWatchEvent(
       )),
     );
   } else if (
+    event['detail-type'] === 'Tag Change on Resource' &&
+    event.detail.service === 'sagemaker'
+  ) {
+    for (const resourceArn of event.resources) {
+      const resourceId = arnparser.parse(resourceArn).resource.split('/')[1];
+      resources.push(...(await describeSagemakerNotebook(resourceId)));
+    }
+  } else if (
+    event['detail-type'] === 'AWS API Call via CloudTrail' &&
+    event['source'] === 'aws.sagemaker'
+  ) {
+    const name = event.detail?.requestParameters?.notebookInstanceName;
+    if (name) {
+      resources.push(...(await describeSagemakerNotebook(name)));
+    } else {
+      console.log('SageMaker CloudTrail event missing notebookInstanceName');
+    }
+  } else if (
     (event['detail-type'] === 'Tag Change on Resource' &&
       event.detail.service === 'rds') ||
     event['detail-type'] === 'RDS DB Instance Event' ||
@@ -869,7 +991,8 @@ export async function handler(event: unknown): Promise<unknown> {
       action.resourceType === 'ec2-instance' ||
       action.resourceType === 'rds-instance' ||
       action.resourceType === 'rds-cluster' ||
-      action.resourceType === 'ecs-service'
+      action.resourceType === 'ecs-service' ||
+      action.resourceType === 'sagemaker-notebook'
     ) {
       return processStateAction(stateMachineArn, action);
     } else {

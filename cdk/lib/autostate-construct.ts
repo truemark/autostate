@@ -92,6 +92,51 @@ export class AutoState extends Construct {
       resultPath: '$.result',
     });
 
+    const startSageMakerInstance = new CallAwsService(
+      this,
+      'StartSageMakerNotebook',
+      {
+        service: 'sagemaker',
+        action: 'startNotebookInstance',
+        parameters: {
+          NotebookInstanceName: JsonPath.stringAt('$.resource.id'),
+        },
+        iamAction: 'sagemaker:StartNotebookInstance',
+        iamResources: ['*'],
+        resultPath: '$.result',
+      },
+    );
+
+    const stopSageMakerInstance = new CallAwsService(
+      this,
+      'StopSageMakerNotebook',
+      {
+        service: 'sagemaker',
+        action: 'stopNotebookInstance',
+        parameters: {
+          NotebookInstanceName: JsonPath.stringAt('$.resource.id'),
+        },
+        iamAction: 'sagemaker:StopNotebookInstance',
+        iamResources: ['*'],
+        resultPath: '$.result',
+      },
+    );
+
+    const deleteSageMakerInstance = new CallAwsService(
+      this,
+      'DeleteSageMakerNotebook',
+      {
+        service: 'sagemaker',
+        action: 'deleteNotebookInstance',
+        parameters: {
+          NotebookInstanceName: JsonPath.stringAt('$.resource.id'),
+        },
+        iamAction: 'sagemaker:DeleteNotebookInstance',
+        iamResources: ['*'],
+        resultPath: '$.result',
+      },
+    );
+
     const stopRdsInstance = new CallAwsService(this, 'StopRdsInstance', {
       service: 'rds',
       action: 'stopDBInstance',
@@ -275,7 +320,30 @@ export class AutoState extends Construct {
         ),
         ec2Terminate,
       )
-
+      .when(
+        Condition.and(
+          Condition.booleanEquals('$.execute', true),
+          Condition.stringEquals('$.resource.type', 'sagemaker-notebook'),
+          Condition.stringEquals('$.action', 'start'),
+        ),
+        startSageMakerInstance,
+      )
+      .when(
+        Condition.and(
+          Condition.booleanEquals('$.execute', true),
+          Condition.stringEquals('$.resource.type', 'sagemaker-notebook'),
+          Condition.stringEquals('$.action', 'stop'),
+        ),
+        stopSageMakerInstance,
+      )
+      .when(
+        Condition.and(
+          Condition.booleanEquals('$.execute', true),
+          Condition.stringEquals('$.resource.type', 'sagemaker-notebook'),
+          Condition.stringEquals('$.action', 'terminate'),
+        ),
+        deleteSageMakerInstance,
+      )
       .when(
         Condition.and(
           Condition.booleanEquals('$.execute', true),
@@ -308,7 +376,6 @@ export class AutoState extends Construct {
         ),
         deletedRdsInstance,
       )
-
       .when(
         Condition.and(
           Condition.booleanEquals('$.execute', true),
@@ -341,7 +408,6 @@ export class AutoState extends Construct {
         ),
         deleteRdsClusterInstances,
       )
-
       .when(
         Condition.and(
           Condition.booleanEquals('$.execute', true),
@@ -386,6 +452,16 @@ export class AutoState extends Construct {
       Condition.stringEquals(
         '$.Execution.Input.detail-type',
         'EC2 Instance State-change Notification',
+      ),
+      eventProcessor,
+    );
+    eventRouter.when(
+      Condition.and(
+        Condition.stringEquals(
+          '$.Execution.Input.detail-type',
+          'AWS API Call via CloudTrail',
+        ),
+        Condition.stringEquals('$.Execution.Input.source', 'aws.sagemaker'),
       ),
       eventProcessor,
     );
@@ -439,8 +515,14 @@ export class AutoState extends Construct {
         source: ['aws.tag'],
         detailType: ['Tag Change on Resource'],
         detail: {
-          'service': ['ec2', 'rds', 'ecs'],
-          'resource-type': ['service', 'cluster', 'instance', 'db'],
+          'service': ['ec2', 'rds', 'ecs', 'sagemaker'],
+          'resource-type': [
+            'service',
+            'cluster',
+            'instance',
+            'db',
+            'notebook-instance',
+          ],
           'changed-tag-keys': [
             'autostate:stop-schedule',
             'autostate:start-schedule',
@@ -452,7 +534,7 @@ export class AutoState extends Construct {
           ],
         },
       },
-      description: 'Routes tag events AutoState Step Function',
+      description: 'Routes tag events to AutoState Step Function',
     });
     tagRule.addTarget(new SfnStateMachine(stateMachine, {deadLetterQueue}));
 
@@ -468,6 +550,23 @@ export class AutoState extends Construct {
       eventBus: props.eventBus,
     });
     ec2StartRule.addTarget(
+      new SfnStateMachine(stateMachine, {deadLetterQueue}),
+    );
+
+    const sagemakerStartStopRule = new Rule(this, 'SageMakerNotebookApiCalls', {
+      eventBus: props.eventBus,
+      eventPattern: {
+        source: ['aws.sagemaker'],
+        detailType: ['AWS API Call via CloudTrail'],
+        detail: {
+          eventSource: ['sagemaker.amazonaws.com'],
+          eventName: ['StartNotebookInstance', 'StopNotebookInstance'],
+        },
+      },
+      description:
+        'Routes SageMaker notebook Start/Stop API calls to AutoState',
+    });
+    sagemakerStartStopRule.addTarget(
       new SfnStateMachine(stateMachine, {deadLetterQueue}),
     );
 

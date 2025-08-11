@@ -36,6 +36,8 @@ export class SchedulerFunction extends NodejsFunction {
       new PolicyStatement({
         actions: [
           'ec2:DescribeInstances',
+          "sagemaker:DescribeNotebookInstance",
+          "sagemaker:ListTags",
           'rds:DescribeDBClusters',
           'rds:DescribeDBInstances',
           'rds:DescribeEvents',
