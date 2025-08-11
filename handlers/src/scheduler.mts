@@ -406,60 +406,68 @@ function getSagemakerTags(tags?: SmTag[]): AutoStateTags {
   return auto;
 }
 
+function isSmRecordNotFound(err: unknown): boolean {
+  const e = err as {name?: string; message?: string; errorMessage?: string};
+  const msg = e?.message ?? e?.errorMessage ?? '';
+  return e?.name === 'ValidationException' && msg.includes('RecordNotFound');
+}
+
 async function describeSagemakerNotebook(
   notebookArnOrName: string,
 ): Promise<AutoStateResource[]> {
-  // Accept either ARN or name; if ARN, extract name (arn:...:notebook-instance/<name>)
   const name = notebookArnOrName.includes(':')
     ? arnparser.parse(notebookArnOrName).resource.split('/')[1]
     : notebookArnOrName;
 
-  const out = await sagemakerClient.send(
-    new DescribeNotebookInstanceCommand({
-      NotebookInstanceName: name,
-    }),
-  );
+  try {
+    const instance = await sagemakerClient.send(
+      new DescribeNotebookInstanceCommand({NotebookInstanceName: name}),
+    );
 
-  // Fetch tags
-  const tagsOut = await sagemakerClient.send(
-    new ListTagsCommand({
-      ResourceArn: out.NotebookInstanceArn!,
-    }),
-  );
+    const tagsOut = await sagemakerClient.send(
+      new ListTagsCommand({ResourceArn: instance.NotebookInstanceArn!}),
+    );
 
-  // Map state
-  let state: State = 'other';
-  if (out.NotebookInstanceStatus === NotebookInstanceStatus.InService)
-    state = 'running';
-  else if (
-    out.NotebookInstanceStatus === NotebookInstanceStatus.Stopped ||
-    out.NotebookInstanceStatus === NotebookInstanceStatus.Stopping
-  )
-    state = 'stopped';
-  else if (
-    out.NotebookInstanceStatus === NotebookInstanceStatus.Deleting ||
-    out.NotebookInstanceStatus === NotebookInstanceStatus.Failed
-  )
-    state = 'terminated';
+    let state: State = 'other';
+    if (instance.NotebookInstanceStatus === NotebookInstanceStatus.InService)
+      state = 'running';
+    else if (
+      instance.NotebookInstanceStatus === NotebookInstanceStatus.Stopped ||
+      instance.NotebookInstanceStatus === NotebookInstanceStatus.Stopping
+    )
+      state = 'stopped';
+    else if (
+      instance.NotebookInstanceStatus === NotebookInstanceStatus.Deleting ||
+      instance.NotebookInstanceStatus === NotebookInstanceStatus.Failed
+    )
+      state = 'terminated';
 
-  const tags = getSagemakerTags(tagsOut.Tags);
-  const tagsHash = hashTagsV1(tags);
+    const tags = getSagemakerTags(tagsOut.Tags);
+    const tagsHash = hashTagsV1(tags);
+    const start =
+      instance.LastModifiedTime ?? instance.CreationTime ?? new Date();
+    const create = instance.CreationTime ?? new Date();
 
-  // We don’t get a precise “start time”; use LastModifiedTime as a decent proxy for “last became active”
-  const start = out.LastModifiedTime ?? out.CreationTime ?? new Date();
-  const create = out.CreationTime ?? new Date();
-
-  return [
-    {
-      type: 'sagemaker-notebook',
-      id: name,
-      tags,
-      tagsHash,
-      state,
-      startTime: start.toISOString(),
-      createTime: create.toISOString(),
-    },
-  ];
+    return [
+      {
+        type: 'sagemaker-notebook',
+        id: name,
+        tags,
+        tagsHash,
+        state,
+        startTime: start.toISOString(),
+        createTime: create.toISOString(),
+      },
+    ];
+  } catch (err) {
+    if (isSmRecordNotFound(err)) {
+      console.log(
+        `SageMaker notebook ${name} not found (likely deleted) — ignoring.`,
+      );
+      return []; // treat as gone so no follow-up is scheduled
+    }
+    throw err; // let other errors bubble/retry
+  }
 }
 
 async function getRdsStartTime(

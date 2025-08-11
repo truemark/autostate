@@ -122,6 +122,31 @@ export class AutoState extends Construct {
       },
     );
 
+    // Separate stop task used only in the terminate path (to avoid reusing a Task that has different .next chains)
+    const stopSageMakerForTerminate = new CallAwsService(
+      this,
+      'StopSageMakerNotebookForTerminate',
+      {
+        service: 'sagemaker',
+        action: 'stopNotebookInstance',
+        parameters: {
+          NotebookInstanceName: JsonPath.stringAt('$.resource.id'),
+        },
+        iamAction: 'sagemaker:StopNotebookInstance',
+        iamResources: ['*'],
+        resultPath: '$.result',
+      },
+    );
+
+    const ignoreSageMakerStopErrors = new Pass(
+      this,
+      'IgnoreSageMakerStopErrors',
+    );
+
+    // If stop fails because it's already in a terminal/stopping state, we ignore and proceed to delete.
+    stopSageMakerForTerminate.addCatch(ignoreSageMakerStopErrors, {});
+
+    // Delete with Retry (exponential backoff, bounded attempts)
     const deleteSageMakerInstance = new CallAwsService(
       this,
       'DeleteSageMakerNotebook',
@@ -135,7 +160,18 @@ export class AutoState extends Construct {
         iamResources: ['*'],
         resultPath: '$.result',
       },
-    );
+    )
+      .addRetry({
+        errors: ['SageMaker.SageMakerException'],
+        interval: Duration.seconds(15),
+        backoffRate: 2.0,
+        maxAttempts: 10,
+      })
+      .addCatch(
+        new Fail(this, 'SageMakerNotDeletable', {
+          cause: 'Notebook not in a deletable state after retries',
+        }),
+      );
 
     const stopRdsInstance = new CallAwsService(this, 'StopRdsInstance', {
       service: 'rds',
@@ -336,13 +372,16 @@ export class AutoState extends Construct {
         ),
         stopSageMakerInstance,
       )
+      // TERMINATE for SageMaker: Stop (ignore errors) -> Delete (with Retry)
       .when(
         Condition.and(
           Condition.booleanEquals('$.execute', true),
           Condition.stringEquals('$.resource.type', 'sagemaker-notebook'),
           Condition.stringEquals('$.action', 'terminate'),
         ),
-        deleteSageMakerInstance,
+        stopSageMakerForTerminate
+          .next(ignoreSageMakerStopErrors)
+          .next(deleteSageMakerInstance),
       )
       .when(
         Condition.and(
@@ -424,7 +463,6 @@ export class AutoState extends Construct {
         ),
         startEcsService,
       )
-
       .otherwise(doNothing);
 
     const invokeScheduler = new LambdaInvoke(this, 'Scheduler', {
