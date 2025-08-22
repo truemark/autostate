@@ -835,13 +835,22 @@ export async function processStateAction(
     }
   }
   if (action.action === 'stop' || action.action === 'reboot') {
-    // When max-runtime is used we must check the previous start time to ensure we should be proceeding
-    if (resource.tags.maxRuntime && resource.state === 'running') {
-      const when = calculateWhen(
+    // For max-runtime we only enforce the "scheduled from start time" equality
+    // where startTime is stable. SageMaker notebooks use LastModifiedTime which
+    // can shift during transitions, so we skip the equality check for them.
+    const enforceEquality = resource.type !== 'sagemaker-notebook';
+
+    if (
+      enforceEquality &&
+      resource.tags.maxRuntime &&
+      resource.state === 'running'
+    ) {
+      const expectedWhen = calculateWhen(
         resource.startTime,
         Number(resource.tags.maxRuntime),
       ).toISOString();
-      if (action.when !== when) {
+
+      if (action.when !== expectedWhen) {
         return {
           ...action,
           execute: false,
@@ -850,21 +859,20 @@ export async function processStateAction(
         };
       }
     }
+
     await startExecution(
       stateMachineArn,
       resource,
       nextAction(resource, action),
     );
+
     if (resource.state === 'running') {
       console.log(
-        `${action.resourceType} ${action.resourceId} is running, ${action.action === 'stop' ? 'stopping' : 'rebooting'}...`,
+        `${action.resourceType} ${action.resourceId} is running, ${
+          action.action === 'stop' ? 'stopping' : 'rebooting'
+        }...`,
       );
-      return {
-        ...action,
-        execute: true,
-        reason: 'Checks passed',
-        resource,
-      };
+      return {...action, execute: true, reason: 'Checks passed', resource};
     } else {
       console.log(
         `${action.resourceType} ${action.resourceId} is not running, doing nothing...`,
