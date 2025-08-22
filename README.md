@@ -7,6 +7,7 @@ An AWS CDK project that automatically starts, stops, reboots and terminates reso
  * RDS Instances
  * RDS Clusters
  * ECS Services
+ * SageMaker Instances
 
 ## Supported Tags
 
@@ -15,6 +16,7 @@ An AWS CDK project that automatically starts, stops, reboots and terminates reso
 | autostate:timezone                  | The timezone to use when interpreting schedules. Defaults to UTC. Example: America/Denver                          |
 | autostate:start-schedule            | The schedule as a cron expression to start the resource. Example: 0 8 * * 1-5                                      |
 | autostate:stop-schedule             | The schedule as a cron expression to stop the resource. Example: 0 18 * * 1-5                                      |
+| autostate:terminate-schedule        | The schedule as a cron expression to terminate the resource. Example: 0 18 * * 1-5                                      |
 | autostate:reboot-schedule           | The schedule as a cron expression to reboot the instance. Example: 0 12 * * 1-5                                    |
 | autostate:max-runtime               | The number of minutes the resource may run before being stopped.                                                   |
 | autostate:max-lifetime              | The number of minutes the resource may exist before being terminated.                                              |
@@ -62,7 +64,7 @@ Start an instance every 30 minutes and shut it down 10 minutes after it starts o
 
 ## Caveats
 
- * RDS doesn't allow asterisks or commas in tag values so use hyphens and colons instead when defining cron expressions
+ * RDS and SageMaker doesn't allow asterisks or commas in tag values so use hyphens and colons instead when defining cron expressions
     Start an RDS cluster every 30 minutes and shut it down 15 minutes after it starts on weekdays.
     ```json
     {
