@@ -1,6 +1,6 @@
 import * as arnparser from '@aws-sdk/util-arn-parser';
 import * as cron from 'cron-parser';
-import {CronExpression} from 'cron-parser/types';
+import {CronExpression} from 'cron-parser';
 import {
   DescribeInstancesCommand,
   EC2Client,
@@ -834,14 +834,24 @@ export async function processStateAction(
       };
     }
   }
+
   if (action.action === 'stop' || action.action === 'reboot') {
-    // When max-runtime is used we must check the previous start time to ensure we should be proceeding
-    if (resource.tags.maxRuntime && resource.state === 'running') {
-      const when = calculateWhen(
+    const isSageMaker = resource.type === 'sagemaker-notebook';
+
+    // Only enforce equality for resources with stable startTime (not SageMaker)
+    if (
+      !isSageMaker &&
+      resource.tags.maxRuntime &&
+      resource.state === 'running'
+    ) {
+      const expectedWhen = calculateWhen(
         resource.startTime,
         Number(resource.tags.maxRuntime),
       ).toISOString();
-      if (action.when !== when) {
+
+      if (
+        new Date(action.when).getTime() !== new Date(expectedWhen).getTime()
+      ) {
         return {
           ...action,
           execute: false,
@@ -850,6 +860,7 @@ export async function processStateAction(
         };
       }
     }
+
     await startExecution(
       stateMachineArn,
       resource,

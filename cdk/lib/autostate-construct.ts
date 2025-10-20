@@ -15,6 +15,7 @@ import {
   WaitTime,
   Map as SfnMap,
   DefinitionBody,
+  TaskInput,
 } from 'aws-cdk-lib/aws-stepfunctions';
 import {
   CallAwsService,
@@ -91,6 +92,76 @@ export class AutoState extends Construct {
       iamResources: ['*'],
       resultPath: '$.result',
     });
+
+    const setNotebookResource = new Pass(this, 'SetNotebookResource', {
+      resultPath: '$.resource',
+      parameters: {
+        'type': 'sagemaker-notebook',
+        'id.$':
+          '$.Execution.Input.detail.requestParameters.notebookInstanceName',
+      },
+    });
+
+    const describeNotebook = new CallAwsService(this, 'DescribeNotebook', {
+      service: 'sagemaker',
+      action: 'describeNotebookInstance',
+      parameters: {
+        NotebookInstanceName: JsonPath.stringAt('$.resource.id'),
+      },
+      iamAction: 'sagemaker:DescribeNotebookInstance',
+      iamResources: ['*'],
+      resultPath: '$.describe',
+    });
+
+    const waitNotebook = new Wait(this, 'WaitNotebookInService', {
+      time: WaitTime.duration(Duration.minutes(2)),
+    });
+
+    const buildInServiceEvent = new Pass(this, 'BuildNotebookInServiceEvent', {
+      parameters: {
+        'StateMachine.$': '$$.StateMachine',
+        'Execution': {
+          Input: {
+            'detail-type': 'AWS API Call via CloudTrail',
+            'source': 'aws.sagemaker',
+            'detail': {
+              requestParameters: {
+                'notebookInstanceName.$': '$.resource.id',
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const notifyInService = new LambdaInvoke(this, 'NotifyInService', {
+      lambdaFunction: schedulerFunction,
+      payload: TaskInput.fromJsonPathAt('$'),
+      outputPath: '$.Payload',
+    });
+
+    const pollUntilInService = new Choice(this, 'NotebookInService?')
+      .when(
+        Condition.stringEquals(
+          '$.describe.NotebookInstanceStatus',
+          'InService',
+        ),
+        buildInServiceEvent.next(notifyInService),
+      )
+      .when(
+        Condition.or(
+          Condition.stringEquals(
+            '$.describe.NotebookInstanceStatus',
+            'Pending',
+          ),
+          Condition.stringEquals(
+            '$.describe.NotebookInstanceStatus',
+            'Updating',
+          ),
+        ),
+        waitNotebook.next(describeNotebook),
+      )
+      .otherwise(new Pass(this, 'NotebookNotInServiceSkip'));
 
     const startSageMakerInstance = new CallAwsService(
       this,
@@ -482,6 +553,21 @@ export class AutoState extends Construct {
       ),
       eventProcessor,
     );
+    eventRouter.when(
+      Condition.and(
+        Condition.stringEquals(
+          '$.Execution.Input.detail-type',
+          'AWS API Call via CloudTrail',
+        ),
+        Condition.stringEquals('$.Execution.Input.source', 'aws.sagemaker'),
+        Condition.stringEquals(
+          '$.Execution.Input.detail.eventName',
+          'StartNotebookInstance',
+        ),
+      ),
+      setNotebookResource.next(describeNotebook).next(pollUntilInService),
+    );
+
     eventRouter.when(
       Condition.and(
         Condition.stringEquals(
