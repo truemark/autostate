@@ -1,6 +1,6 @@
 import * as arnparser from '@aws-sdk/util-arn-parser';
 import * as cron from 'cron-parser';
-import {CronExpression} from 'cron-parser/types';
+import {CronExpression} from 'cron-parser';
 import {
   DescribeInstancesCommand,
   EC2Client,
@@ -834,14 +834,13 @@ export async function processStateAction(
       };
     }
   }
-  if (action.action === 'stop' || action.action === 'reboot') {
-    // For max-runtime we only enforce the "scheduled from start time" equality
-    // where startTime is stable. SageMaker notebooks use LastModifiedTime which
-    // can shift during transitions, so we skip the equality check for them.
-    const enforceEquality = resource.type !== 'sagemaker-notebook';
 
+  if (action.action === 'stop' || action.action === 'reboot') {
+    const isSageMaker = resource.type === 'sagemaker-notebook';
+
+    // Only enforce equality for resources with stable startTime (not SageMaker)
     if (
-      enforceEquality &&
+      !isSageMaker &&
       resource.tags.maxRuntime &&
       resource.state === 'running'
     ) {
@@ -850,7 +849,9 @@ export async function processStateAction(
         Number(resource.tags.maxRuntime),
       ).toISOString();
 
-      if (action.when !== expectedWhen) {
+      if (
+        new Date(action.when).getTime() !== new Date(expectedWhen).getTime()
+      ) {
         return {
           ...action,
           execute: false,
@@ -865,14 +866,16 @@ export async function processStateAction(
       resource,
       nextAction(resource, action),
     );
-
     if (resource.state === 'running') {
       console.log(
-        `${action.resourceType} ${action.resourceId} is running, ${
-          action.action === 'stop' ? 'stopping' : 'rebooting'
-        }...`,
+        `${action.resourceType} ${action.resourceId} is running, ${action.action === 'stop' ? 'stopping' : 'rebooting'}...`,
       );
-      return {...action, execute: true, reason: 'Checks passed', resource};
+      return {
+        ...action,
+        execute: true,
+        reason: 'Checks passed',
+        resource,
+      };
     } else {
       console.log(
         `${action.resourceType} ${action.resourceId} is not running, doing nothing...`,
