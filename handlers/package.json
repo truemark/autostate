@@ -13,18 +13,19 @@
     "@types/aws-lambda": "^8.10.100",
     "@types/eslint__js": "^8.42.3",
     "@types/node": "^20.17.6",
-    "ts-node": "^10.9.2",
+    "@types/uuid": "^8.3.4",
     "@vitest/coverage-v8": "^1.6.0",
     "aws-sdk-client-mock": "^1.0.0",
     "eslint": "^8.57.1",
     "prettier": "^3.3.3",
     "source-map-support": "^0.5.21",
+    "ts-node": "^10.9.2",
     "typescript": "~5.4.5",
     "typescript-eslint": "^7.16.0",
-    "vitest": "^1.6.0",
-    "@types/uuid": "^8.3.4"
+    "vitest": "^1.6.0"
   },
   "dependencies": {
+    "@aws-sdk/client-cloudwatch": "^3.1119.0",
     "@aws-sdk/client-ec2": "^3.686.0",
     "@aws-sdk/client-ecs": "^3.686.0",
     "@aws-sdk/client-rds": "^3.686.0",

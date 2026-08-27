@@ -1,8 +1,15 @@
 import {Construct} from 'constructs';
 import {Duration, RemovalPolicy} from 'aws-cdk-lib';
-import {IEventBus, Rule} from 'aws-cdk-lib/aws-events';
+import {
+  IEventBus,
+  Match,
+  Rule,
+  RuleTargetInput,
+  Schedule,
+} from 'aws-cdk-lib/aws-events';
 import {Queue, QueueEncryption} from 'aws-cdk-lib/aws-sqs';
 import {SchedulerFunction} from './scheduler-function';
+import {IdleFunction} from './idle-function';
 import {
   Choice,
   Condition,
@@ -20,7 +27,7 @@ import {
   CallAwsService,
   LambdaInvoke,
 } from 'aws-cdk-lib/aws-stepfunctions-tasks';
-import {SfnStateMachine} from 'aws-cdk-lib/aws-events-targets';
+import {LambdaFunction, SfnStateMachine} from 'aws-cdk-lib/aws-events-targets';
 
 export interface AutoStateProps {
   readonly tagPrefix?: string;
@@ -33,6 +40,10 @@ export class AutoState extends Construct {
     const tagPrefix = props.tagPrefix ?? 'autostate:';
 
     const schedulerFunction = new SchedulerFunction(this, 'SchedulerFunction', {
+      tagPrefix,
+    });
+
+    const idleFunction = new IdleFunction(this, 'IdleFunction', {
       tagPrefix,
     });
 
@@ -370,6 +381,11 @@ export class AutoState extends Construct {
       lambdaFunction: schedulerFunction,
     });
 
+    const idleVerifier = new LambdaInvoke(this, 'IdleVerifier', {
+      lambdaFunction: idleFunction,
+      outputPath: '$.Payload',
+    });
+
     const eventRouter = new Choice(this, 'EventRouter');
     eventRouter.when(
       Condition.isPresent('$.Execution.Input.when'),
@@ -413,6 +429,13 @@ export class AutoState extends Construct {
       ),
       eventProcessor,
     );
+    eventRouter.when(
+      Condition.stringEquals(
+        '$.Execution.Input.detail-type',
+        'CloudWatch Alarm State Change',
+      ),
+      idleVerifier.next(routeAction),
+    );
     eventRouter.otherwise(
       new Fail(this, 'UnknownEvent', {
         cause: 'Unknown event type',
@@ -433,6 +456,22 @@ export class AutoState extends Construct {
       removalPolicy: RemovalPolicy.DESTROY,
       retentionPeriod: Duration.days(14),
     });
+
+    const idleAlarmRule = new Rule(this, 'IdleAlarmRule', {
+      eventPattern: {
+        source: ['aws.cloudwatch'],
+        detailType: ['CloudWatch Alarm State Change'],
+        detail: {
+          alarmName: Match.prefix('autostate-idle-'),
+          state: {value: ['ALARM']},
+        },
+      },
+      description:
+        'Routes AutoState idle composite alarms to the state machine',
+    });
+    idleAlarmRule.addTarget(
+      new SfnStateMachine(stateMachine, {deadLetterQueue}),
+    );
 
     const tagRule = new Rule(this, 'TagRule', {
       eventPattern: {
@@ -455,6 +494,46 @@ export class AutoState extends Construct {
       description: 'Routes tag events AutoState Step Function',
     });
     tagRule.addTarget(new SfnStateMachine(stateMachine, {deadLetterQueue}));
+
+    const idleTagRule = new Rule(this, 'IdleTagRule', {
+      eventPattern: {
+        source: ['aws.tag'],
+        detailType: ['Tag Change on Resource'],
+        detail: {
+          'service': ['ec2'],
+          'resource-type': ['instance'],
+          'changed-tag-keys': [
+            'autostate:idle-detection',
+            'autostate:idle-threshold',
+          ],
+        },
+      },
+      description: 'Reconciles Autostate idle alarms when idle tags change',
+    });
+    idleTagRule.addTarget(new LambdaFunction(idleFunction, {deadLetterQueue}));
+
+    const idleInstanceStateRule = new Rule(this, 'IdleInstanceStateRule', {
+      eventPattern: {
+        source: ['aws.ec2'],
+        detailType: ['EC2 Instance State-change Notification'],
+        detail: {state: ['running', 'terminated', 'shutting-down']},
+      },
+      description: 'Arms newly started instance, tears down termiated ones',
+    });
+    idleInstanceStateRule.addTarget(
+      new LambdaFunction(idleFunction, {deadLetterQueue}),
+    );
+
+    const idleSweepRule = new Rule(this, 'IdleSweepRule', {
+      schedule: Schedule.rate(Duration.days(1)),
+      description: 'Daily drift repair for AutoState idle alarms',
+    });
+    idleSweepRule.addTarget(
+      new LambdaFunction(idleFunction, {
+        event: RuleTargetInput.fromObject({action: 'reconcile-all'}),
+        deadLetterQueue,
+      }),
+    );
 
     const ec2StartRule = new Rule(this, 'Ec2StartRule', {
       eventPattern: {
